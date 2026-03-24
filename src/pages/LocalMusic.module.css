@@ -1,0 +1,25 @@
+.songCount {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.addWrapper { position: relative; }
+
+.dropdown {
+  position: absolute; right: 0; top: 100%;
+  background: var(--bg-surface); border-radius: 8px;
+  padding: 8px; min-width: 180px; z-index: 10;
+  border: 1px solid var(--border);
+}
+
+.dropdownEmpty {
+  padding: 8px; color: var(--text-secondary); font-size: 13px;
+}
+
+.dropdownItem {
+  padding: 8px 12px; cursor: pointer;
+  border-radius: 4px; font-size: 13px;
+}
+.dropdownItem:hover { background: var(--bg-hover); }
+
+.playing { color: var(--green); }

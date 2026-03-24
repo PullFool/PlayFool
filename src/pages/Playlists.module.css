@@ -1,0 +1,27 @@
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 16px;
+}
+
+.card {
+  background: var(--bg-card); border-radius: 8px;
+  padding: 16px; cursor: pointer; transition: background 0.2s;
+}
+.card:hover { background: var(--bg-hover); }
+
+.cardArt {
+  width: 100%; aspect-ratio: 1; border-radius: 6px;
+  background: var(--bg-surface); margin-bottom: 12px;
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+}
+.cardArt img { width: 100%; height: 100%; object-fit: cover; }
+.cardIcon { font-size: 48px; color: var(--text-muted); }
+
+.cardName { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+
+.cardMeta {
+  font-size: 12px; color: var(--text-secondary);
+  display: flex; justify-content: space-between; align-items: center;
+}

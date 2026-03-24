@@ -1,0 +1,39 @@
+.header {
+  display: flex; align-items: center;
+  gap: 16px; margin-bottom: 24px;
+}
+
+.info { flex: 1; }
+.count { color: var(--text-secondary); font-size: 13px; margin: 0; }
+.actions { display: flex; gap: 8px; margin-left: auto; }
+
+.modal { max-width: 500px; max-height: 80vh; display: flex; flex-direction: column; }
+
+.searchWrapper { position: relative; margin-bottom: 12px; }
+.searchIcon {
+  position: absolute; left: 12px; top: 11px;
+  color: var(--text-muted); font-size: 16px;
+}
+.searchInput {
+  width: 100%; padding: 10px 14px 10px 36px;
+  border-radius: 6px; border: 1px solid var(--border);
+  background: var(--bg-primary); color: var(--text-primary);
+  font-size: 14px; outline: none; margin-bottom: 0;
+}
+.searchInput:focus { border-color: var(--green); }
+
+.modalList { overflow-y: auto; flex: 1; margin-bottom: 16px; }
+.modalMsg { color: var(--text-secondary); text-align: center; padding: 20px; }
+
+.toggleBtn {
+  width: 32px; height: 32px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  border: 2px solid var(--border); background: transparent;
+  color: var(--text-secondary); font-size: 18px;
+  flex-shrink: 0; transition: all 0.2s; cursor: pointer;
+}
+.toggleBtnAdded {
+  background: var(--green); border-color: var(--green); color: #000;
+}
+
+.playing { color: var(--green); }

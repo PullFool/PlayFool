@@ -1,0 +1,120 @@
+name: Build PlayFool Windows
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build React app
+        run: npx react-scripts build
+        env:
+          REACT_APP_API_URL: http://localhost:3001/api
+          REACT_APP_SERVER_URL: http://localhost:3001
+
+      - name: Download NW.js SDK
+        run: |
+          $nwVersion = "0.92.0"
+          $url = "https://dl.nwjs.io/v${nwVersion}/nwjs-v${nwVersion}-win-x64.zip"
+          Invoke-WebRequest -Uri $url -OutFile nwjs.zip
+          Expand-Archive -Path nwjs.zip -DestinationPath nwjs-temp
+          Rename-Item "nwjs-temp/nwjs-v${nwVersion}-win-x64" "nwjs-dist"
+
+      - name: Download ffmpeg
+        run: |
+          $url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
+          Invoke-WebRequest -Uri $url -OutFile ffmpeg.zip
+          Expand-Archive -Path ffmpeg.zip -DestinationPath ffmpeg-temp
+          New-Item -ItemType Directory -Force -Path "ffmpeg"
+          $ffDir = Get-ChildItem -Path ffmpeg-temp -Directory | Select-Object -First 1
+          Copy-Item "$($ffDir.FullName)/bin/ffmpeg.exe" "ffmpeg/ffmpeg.exe"
+          Copy-Item "$($ffDir.FullName)/bin/ffprobe.exe" "ffmpeg/ffprobe.exe"
+
+      - name: Package app
+        run: |
+          $dist = "PlayFool-Windows"
+
+          # Copy NW.js runtime
+          Copy-Item -Recurse "nwjs-dist" $dist
+
+          # Copy app files
+          Copy-Item "package.json" "$dist/"
+          Copy-Item "server.js" "$dist/"
+          Copy-Item "index.html" "$dist/"
+          Copy-Item "main.js" "$dist/"
+          Copy-Item -Recurse "build" "$dist/build"
+          Copy-Item -Recurse "ffmpeg" "$dist/ffmpeg"
+          Copy-Item -Recurse "public" "$dist/public"
+
+          # Copy node_modules (only production deps)
+          Copy-Item -Recurse "node_modules/express" "$dist/node_modules/express"
+          Copy-Item -Recurse "node_modules/cors" "$dist/node_modules/cors"
+
+          # Install production deps fresh
+          Push-Location $dist
+          npm install --omit=dev --ignore-scripts 2>$null
+          Pop-Location
+
+          # Rename nw.exe to PlayFool.exe
+          Rename-Item "$dist/nw.exe" "PlayFool.exe"
+
+          # Create launcher batch file
+          @"
+          @echo off
+          cd /d "%~dp0"
+          start "" "PlayFool.exe" --user-data-dir="%LOCALAPPDATA%\PlayFool\nw-data"
+          "@ | Out-File -Encoding ascii "$dist/Launch PlayFool.bat"
+
+          # Zip it
+          Compress-Archive -Path $dist -DestinationPath "PlayFool-Windows.zip"
+
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: PlayFool-Windows.zip
+          name: PlayFool ${{ github.ref_name }}
+          body: |
+            ## PlayFool - Desktop Music & Video Player
+
+            ### Download
+            1. Download `PlayFool-Windows.zip`
+            2. Extract to any folder
+            3. Run `Launch PlayFool.bat` or `PlayFool.exe`
+
+            ### Requirements
+            - Windows 10/11 (64-bit)
+            - Python with yt-dlp installed (`pip install yt-dlp`)
+
+            ### Features
+            - YouTube search, preview (video + audio), and download
+            - MP3 and MP4 downloads with quality selection
+            - Music library with playlists
+            - Synced lyrics (offline)
+            - Video player with side panel
+            - Shuffle, repeat, seek controls
+
+            Made by PullFool
+
+      - name: Upload artifact (for manual builds)
+        if: "!startsWith(github.ref, 'refs/tags/')"
+        uses: actions/upload-artifact@v4
+        with:
+          name: PlayFool-Windows
+          path: PlayFool-Windows.zip

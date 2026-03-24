@@ -1,0 +1,70 @@
+.sidebar {
+  width: var(--sidebar-width);
+  background: var(--bg-secondary);
+  height: calc(100vh - var(--player-height));
+  position: fixed;
+  left: 0;
+  top: 0;
+  padding: 20px 12px;
+  z-index: 100;
+  border-right: 1px solid var(--border);
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  margin-bottom: 30px;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--green);
+}
+
+.logo svg {
+  font-size: 28px;
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.navItem {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  text-decoration: none;
+  color: var(--text-secondary);
+  font-size: 15px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.navItem:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.active {
+  color: var(--text-primary);
+  background: var(--bg-surface);
+}
+
+.navItem svg {
+  font-size: 22px;
+}
+
+.trademark {
+  position: absolute;
+  bottom: 16px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+}
