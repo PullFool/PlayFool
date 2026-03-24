@@ -34,8 +34,10 @@ jobs:
           $nwVersion = "0.92.0"
           $url = "https://dl.nwjs.io/v${nwVersion}/nwjs-v${nwVersion}-win-x64.zip"
           Invoke-WebRequest -Uri $url -OutFile nwjs.zip
-          Expand-Archive -Path nwjs.zip -DestinationPath nwjs-temp
-          Rename-Item "nwjs-temp/nwjs-v${nwVersion}-win-x64" "nwjs-dist"
+          Expand-Archive -Path nwjs.zip -DestinationPath .
+          Rename-Item "nwjs-v${nwVersion}-win-x64" "nwjs-dist"
+          Write-Host "NW.js extracted:"
+          Get-ChildItem nwjs-dist | Select-Object -First 5
 
       - name: Download ffmpeg
         run: |
