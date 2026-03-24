@@ -4,7 +4,6 @@ dist/
 downloads/
 ffmpeg/
 nw-data/
-.env
 *.log
 package-test.json
 test-electron.js
