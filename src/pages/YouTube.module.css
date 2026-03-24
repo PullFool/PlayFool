@@ -1,0 +1,87 @@
+.errorMsg {
+  color: #ff6b6b; padding: 8px 0;
+  font-size: 13px; margin-bottom: 12px;
+}
+
+.thumbnail {
+  width: 48px; height: 48px; border-radius: 6px;
+  flex-shrink: 0; overflow: hidden;
+  position: relative; cursor: pointer;
+}
+.thumbnail img { width: 100%; height: 100%; object-fit: cover; }
+
+.thumbnailPlaceholder {
+  width: 100%; height: 100%;
+  background: var(--bg-surface);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-muted);
+}
+
+.thumbnailOverlay {
+  position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.4);
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 20px; transition: background 0.2s;
+}
+.overlayActive { background: rgba(29,185,84,0.7); }
+.loading { font-size: 11px; }
+.playing { color: var(--green); }
+
+/* Download buttons group */
+.downloadBtns {
+  display: flex; gap: 6px; flex-shrink: 0;
+}
+
+.watchBtn {
+  background: transparent; color: var(--text-secondary);
+  border: 1px solid var(--border); border-radius: 20px;
+  padding: 6px 10px; font-size: 14px;
+  cursor: pointer; display: inline-flex; align-items: center;
+  transition: all 0.2s;
+}
+.watchBtn:hover { border-color: #ff6b6b; color: #ff6b6b; }
+
+.mp4Btn {
+  background: var(--bg-surface); color: var(--text-primary);
+  border: 1px solid var(--border); border-radius: 20px;
+  padding: 6px 14px; font-size: 12px; font-weight: 600;
+  cursor: pointer; display: inline-flex; align-items: center; gap: 4px;
+  transition: all 0.2s;
+}
+.mp4Btn:hover { border-color: var(--green); color: var(--green); }
+.mp4Btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Quality modal */
+.modalHeader {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 8px;
+}
+.modalHeader h3 { margin: 0; }
+
+.modalTitle {
+  font-size: 13px; color: var(--text-secondary);
+  margin-bottom: 16px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.modalLoading {
+  color: var(--text-secondary); text-align: center; padding: 20px;
+}
+
+.qualityGrid {
+  display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px;
+}
+
+.qualityBtn {
+  padding: 10px 20px; border-radius: 8px;
+  background: var(--bg-primary); border: 2px solid var(--border);
+  color: var(--text-primary); font-size: 14px; font-weight: 600;
+  cursor: pointer; transition: all 0.2s;
+  flex: 1; min-width: 70px; text-align: center;
+}
+.qualityBtn:hover { border-color: var(--green); }
+
+.qualityActive {
+  border-color: var(--green); background: rgba(29,185,84,0.1);
+  color: var(--green);
+}

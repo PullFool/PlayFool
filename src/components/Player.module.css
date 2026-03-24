@@ -1,0 +1,103 @@
+.bar {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  height: var(--player-height);
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+  z-index: 150;
+}
+
+.progressTop {
+  width: 100%; height: 4px;
+  position: relative; cursor: pointer;
+  transition: height 0.15s;
+}
+.progressTop:hover { height: 6px; }
+
+.progressBg {
+  position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+  background: var(--bg-surface);
+}
+
+.progressFill {
+  position: absolute; top: 0; left: 0; bottom: 0;
+  background: var(--green);
+  transition: width 0.1s linear;
+  pointer-events: none;
+}
+
+.inner {
+  display: flex; align-items: center;
+  height: calc(var(--player-height) - 4px);
+  padding: 0 16px; gap: 16px;
+}
+
+.song {
+  display: flex; align-items: center;
+  gap: 12px; flex: 1; min-width: 0; cursor: pointer;
+}
+
+.art {
+  width: 48px; height: 48px; border-radius: 6px;
+  background: var(--bg-surface);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; overflow: hidden;
+}
+.art img { width: 100%; height: 100%; object-fit: cover; }
+.artIcon { color: var(--text-muted); font-size: 20px; }
+
+.info { min-width: 0; }
+.title {
+  font-size: 13px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.artist {
+  font-size: 11px; color: var(--text-secondary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.controls { display: flex; align-items: center; gap: 8px; }
+.controlBtn {
+  background: none; border: none; color: var(--text-primary);
+  cursor: pointer; font-size: 20px; padding: 8px;
+  display: flex; align-items: center; transition: color 0.2s;
+}
+.controlBtn:hover { color: var(--green); }
+
+.playBtn {
+  background: var(--green); color: #000; border: none;
+  border-radius: 50%; width: 36px; height: 36px;
+  font-size: 18px; display: flex; align-items: center;
+  justify-content: center; padding: 0; cursor: pointer;
+  transition: all 0.2s;
+}
+.playBtn:hover { background: var(--green-hover); transform: scale(1.06); }
+
+.right { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+
+.lyricsBtn {
+  background: none; border: none; color: var(--text-muted);
+  cursor: pointer; font-size: 18px; display: flex; padding: 4px;
+  transition: color 0.2s;
+}
+.lyricsBtn:hover { color: var(--text-primary); }
+.lyricsBtnActive { color: var(--green); }
+.time { font-size: 11px; color: var(--text-secondary); white-space: nowrap; }
+
+.volume { display: flex; align-items: center; gap: 6px; }
+.volumeBtn {
+  background: none; border: none; color: var(--text-secondary);
+  cursor: pointer; font-size: 18px; display: flex; padding: 4px;
+}
+
+.volumeSlider {
+  width: 80px; height: 4px;
+  -webkit-appearance: none; appearance: none;
+  background: var(--bg-surface); border-radius: 2px;
+  outline: none; cursor: pointer;
+}
+.volumeSlider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px; height: 12px;
+  background: var(--text-primary); border-radius: 50%; cursor: pointer;
+}

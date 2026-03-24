@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="80" fill="#1DB954"/>
+  <g fill="#fff">
+    <!-- Music note -->
+    <circle cx="180" cy="340" r="50"/>
+    <circle cx="340" cy="300" r="50"/>
+    <rect x="220" y="120" width="16" height="220"/>
+    <rect x="380" y="80" width="16" height="220"/>
+    <rect x="220" y="110" width="176" height="20" rx="4" transform="rotate(-10 308 120)"/>
+  </g>
+</svg>

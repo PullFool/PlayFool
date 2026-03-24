@@ -1,0 +1,62 @@
+{
+  "name": "playfool",
+  "version": "1.0.0",
+  "description": "PlayFool - Desktop Music & Video Player for Windows",
+  "main": "index.html",
+  "node-main": "server.js",
+  "window": {
+    "title": "PlayFool",
+    "width": 1200,
+    "height": 800,
+    "min_width": 900,
+    "min_height": 600,
+    "icon": "public/icon.png",
+    "toolbar": false,
+    "frame": true
+  },
+  "homepage": "./",
+  "dependencies": {
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^13.5.0",
+    "axios": "^1.13.6",
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "howler": "^2.2.4",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-icons": "^5.6.0",
+    "react-router-dom": "^7.13.1",
+    "react-scripts": "5.0.1",
+    "web-vitals": "^2.1.4"
+  },
+  "devDependencies": {
+    "nw": "^0.92.0"
+  },
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "desktop": "npm run build && nw .",
+    "nw": "nw ."
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app",
+      "react-app/jest"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  }
+}
