@@ -18,12 +18,22 @@ function VideoPanel() {
     if (lastSongId.current !== currentSong.id) {
       lastSongId.current = currentSong.id;
       bindVideoEvents(videoEl.current);
+
+      // Stop any previous audio
+      if (audioEl.current) {
+        audioEl.current.pause();
+        audioEl.current.src = '';
+      }
+
       videoEl.current.src = currentSong.url;
+      videoEl.current.muted = false;
       videoEl.current.load();
       videoEl.current.play().catch(() => {});
 
-      // Play audio stream alongside for sound (YouTube separates video/audio)
-      if (currentSong.audioUrl && audioEl.current) {
+      // Only use separate audio for YouTube previews (which have split video/audio streams)
+      if (currentSong.audioUrl && currentSong.source === 'preview' && audioEl.current) {
+        // Mute video since audio comes from separate stream
+        videoEl.current.muted = true;
         audioEl.current.src = currentSong.audioUrl;
         audioEl.current.load();
         audioEl.current.play().catch(() => {});
@@ -35,7 +45,6 @@ function VideoPanel() {
             if (diff > 0.3) {
               audioEl.current.currentTime = videoEl.current.currentTime;
             }
-            // Sync play/pause state
             if (videoEl.current.paused && !audioEl.current.paused) {
               audioEl.current.pause();
             } else if (!videoEl.current.paused && audioEl.current.paused) {
@@ -84,8 +93,8 @@ function VideoPanel() {
       </div>
 
       <div className={styles.videoWrapper}>
-        <video ref={videoEl} className={styles.video} playsInline />
-        {/* Hidden audio element for sound when video stream has no audio */}
+        <video ref={videoEl} className={styles.video} playsInline muted={false} />
+        {/* Hidden audio element for sound when YouTube video stream has no audio */}
         <audio ref={audioEl} style={{ display: 'none' }} />
       </div>
 

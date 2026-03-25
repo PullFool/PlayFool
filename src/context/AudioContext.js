@@ -89,19 +89,20 @@ export function AudioProvider({ children }) {
     setMediaType(isVideo ? 'video' : 'audio');
     setShowVideoPlayer(isVideo);
 
-    if (isVideo) {
-      // Stop audio if playing
-      audioRef.current.pause();
-      audioRef.current.src = '';
-      // Video element will be rendered by Player component and bound via bindVideoEvents
-    } else {
-      // Stop video if playing
-      if (videoRef.current) { videoRef.current.pause(); videoRef.current.src = ''; }
-      setShowVideoPlayer(false);
+    // Always stop both audio and video before playing new content
+    audioRef.current.pause();
+    audioRef.current.src = '';
+    if (videoRef.current) {
+      videoRef.current.pause();
+      videoRef.current.src = '';
+    }
+
+    if (!isVideo) {
       audioRef.current.src = song.url;
       audioRef.current.load();
       audioRef.current.play().catch((err) => console.error('Play failed:', err.message));
     }
+    // Video element will be rendered by VideoPanel and bound via bindVideoEvents
   }, []);
 
   const shufflePlay = useCallback((songList) => {
