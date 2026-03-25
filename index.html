@@ -15,7 +15,11 @@
   </style>
 </head>
 <body>
-  <div class="loading" id="status">Loading PlayFool...</div>
+  <div class="loading" id="status">
+    <img src="public/icon.png" alt="PlayFool" style="width:80px;height:80px;margin-bottom:12px;animation:spin 2s linear infinite;" />
+    <style>@keyframes spin { 0%{transform:rotate(0deg)} 100%{transform:rotate(360deg)} }</style>
+    Loading PlayFool...
+  </div>
   <script>
     var serverError = null;
 

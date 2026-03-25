@@ -829,7 +829,10 @@ function startServer(port) {
   });
 }
 
+let activeServer = null;
+
 startServer(3001).then((server) => {
+  activeServer = server;
   const port = server.address().port;
   console.log(`PlayFool running on port ${port}`);
   if (typeof global !== 'undefined') {
@@ -839,12 +842,29 @@ startServer(3001).then((server) => {
   console.error('Failed to start server:', err);
 });
 
-// Shut down server and exit when NW.js window closes
+// Shut down server and force exit when NW.js window closes
 if (typeof nw !== 'undefined') {
   nw.Window.get().on('close', function() {
+    // Close the server first
+    if (activeServer) {
+      activeServer.close(() => {
+        process.exit(0);
+      });
+    }
     this.close(true);
-    process.exit(0);
+    // Force exit after 2 seconds if server doesn't close cleanly
+    setTimeout(() => process.exit(0), 2000);
   });
 }
+
+// Also handle process signals
+process.on('SIGINT', () => {
+  if (activeServer) activeServer.close();
+  process.exit(0);
+});
+process.on('SIGTERM', () => {
+  if (activeServer) activeServer.close();
+  process.exit(0);
+});
 
 module.exports = { startServer };

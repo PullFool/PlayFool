@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { usePlayer } from '../context/PlayerContext';
 import { IoSearch, IoDownload, IoMusicalNotes, IoPlay, IoPause, IoShuffle, IoVideocam, IoClose } from 'react-icons/io5';
 import styles from './YouTube.module.css';
@@ -6,19 +6,29 @@ import styles from './YouTube.module.css';
 const API_BASE = process.env.REACT_APP_API_URL;
 const SERVER_BASE = process.env.REACT_APP_SERVER_URL;
 
+// Persist YouTube state across navigation
+let savedQuery = '';
+let savedResults = [];
+let savedDownloaded = [];
+
 function YouTube() {
   const { playSong, shufflePlay, currentSong, isPlaying, downloadProgress, setDownloadProgress } = usePlayer();
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState([]);
+  const [query, setQuery] = useState(savedQuery);
+  const [results, setResults] = useState(savedResults);
   const [searching, setSearching] = useState(false);
-  const [downloadedSongs, setDownloadedSongs] = useState([]);
+  const [downloadedSongs, setDownloadedSongs] = useState(savedDownloaded);
   const [error, setError] = useState('');
   const [previewingId, setPreviewingId] = useState(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
-  const [videoModal, setVideoModal] = useState(null); // video object for quality picker
+  const [videoModal, setVideoModal] = useState(null);
   const [qualities, setQualities] = useState([]);
   const [selectedQuality, setSelectedQuality] = useState('720');
   const [loadingQualities, setLoadingQualities] = useState(false);
+
+  // Save state when it changes so it persists across navigation
+  useEffect(() => { savedQuery = query; }, [query]);
+  useEffect(() => { savedResults = results; }, [results]);
+  useEffect(() => { savedDownloaded = downloadedSongs; }, [downloadedSongs]);
 
   const search = async () => {
     if (!query.trim()) return;
@@ -137,6 +147,16 @@ function YouTube() {
 
   return (
     <div className="page">
+      {/* Loader overlay for search and preview */}
+      {(searching || loadingPreview) && (
+        <div className={styles.loaderOverlay}>
+          <img src="/icon.png" alt="PlayFool" className={styles.loaderLogo} />
+          <div className={styles.loaderText}>
+            {searching ? 'Searching YouTube...' : 'Loading preview...'}
+          </div>
+        </div>
+      )}
+
       <h1 className="page-title">YouTube</h1>
 
       <div className="search-bar">

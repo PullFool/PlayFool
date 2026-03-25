@@ -25,9 +25,9 @@ Name: "desktopicon"; Description: "Create a &desktop icon"; GroupDescription: "A
 Source: "dist\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\PlayFool"; Filename: "{app}\PlayFool.exe"; Parameters: "--user-data-dir=""{localappdata}\PlayFool\nw-data"""
+Name: "{group}\PlayFool"; Filename: "{app}\PlayFool.exe"; IconFilename: "{app}\public\icon.ico"; Parameters: "--user-data-dir=""{localappdata}\PlayFool\nw-data"""
 Name: "{group}\Uninstall PlayFool"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\PlayFool"; Filename: "{app}\PlayFool.exe"; Parameters: "--user-data-dir=""{localappdata}\PlayFool\nw-data"""; Tasks: desktopicon
+Name: "{autodesktop}\PlayFool"; Filename: "{app}\PlayFool.exe"; IconFilename: "{app}\public\icon.ico"; Parameters: "--user-data-dir=""{localappdata}\PlayFool\nw-data"""; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\PlayFool.exe"; Parameters: "--user-data-dir=""{localappdata}\PlayFool\nw-data"""; Description: "Launch PlayFool"; Flags: nowait postinstall skipifsilent

@@ -84,8 +84,22 @@ jobs:
           Write-Host "express: $(Test-Path "$dist/node_modules/express")"
           Write-Host "cors: $(Test-Path "$dist/node_modules/cors")"
 
+          # Convert PNG to ICO using magick (available on windows-latest)
+          magick convert "public/icon.png" -define icon:auto-resize=256,128,64,48,32,16 "public/icon.ico"
+          Copy-Item "public/icon.ico" "$dist/public/icon.ico"
+
           # Rename nw.exe to PlayFool.exe
           Rename-Item "$dist/nw.exe" "PlayFool.exe"
+
+          # Replace the exe icon with our custom icon using rcedit
+          Invoke-WebRequest -Uri "https://github.com/nicehash/rcedit/releases/download/v2.0.0-b1/rcedit-x64.exe" -OutFile rcedit.exe -ErrorAction SilentlyContinue
+          if (Test-Path "rcedit.exe") {
+            & .\rcedit.exe "$dist/PlayFool.exe" --set-icon "public/icon.ico"
+            Write-Host "Icon embedded in PlayFool.exe"
+          } else {
+            # Fallback: try npm rcedit
+            npx rcedit@2.0.0 "$dist/PlayFool.exe" --set-icon "public/icon.ico" 2>&1
+          }
 
       - name: Build installer with Inno Setup
         run: |
