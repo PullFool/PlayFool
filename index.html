@@ -17,38 +17,60 @@
 <body>
   <div class="loading" id="status">Loading PlayFool...</div>
   <script>
-    // Start server directly from NW.js node context (not relying on node-main)
+    var serverError = null;
+
+    // Start server directly from NW.js node context
     try {
       require('./server');
     } catch(e) {
+      serverError = e;
       document.getElementById('status').innerHTML =
-        'Server error:<br><span class="error">' + e.message + '</span>';
+        'Server error:<br><span class="error">' + e.message + '<br>' + e.stack + '</span>';
     }
 
-    let attempts = 0;
-    function waitForServer() {
+    // Try multiple ports in case 3001 was in use
+    var portsToTry = [3001, 3002, 3003, 3004, 3005];
+    var portIndex = 0;
+    var attempts = 0;
+    var foundPort = null;
+
+    function tryPort() {
+      if (portIndex >= portsToTry.length) {
+        document.getElementById('status').innerHTML =
+          'Server did not respond on any port (3001-3005).' +
+          '<br><span class="error">' +
+          (serverError ? 'Error: ' + serverError.message : 'No error caught - server may have crashed silently.') +
+          '<br>Try closing other PlayFool instances from Task Manager and restart.</span>';
+        return;
+      }
+
+      var port = portsToTry[portIndex];
       attempts++;
-      fetch('http://localhost:3001/api/library')
+
+      fetch('http://localhost:' + port + '/api/library')
         .then(function(res) {
           if (res.ok) {
-            window.location.href = 'http://localhost:3001';
+            window.location.href = 'http://localhost:' + port;
           } else {
-            retry();
+            retryOrNextPort();
           }
         })
         .catch(function() {
-          retry();
+          retryOrNextPort();
         });
     }
-    function retry() {
-      if (attempts > 50) {
-        document.getElementById('status').innerHTML +=
-          '<br><span class="error">Server did not respond after 10 seconds.</span>';
-        return;
+
+    function retryOrNextPort() {
+      if (attempts % 15 === 0) {
+        // After 15 attempts on this port (~3 sec), try next port
+        portIndex++;
+        tryPort();
+      } else {
+        setTimeout(tryPort, 200);
       }
-      setTimeout(waitForServer, 200);
     }
-    waitForServer();
+
+    tryPort();
   </script>
 </body>
 </html>

@@ -812,11 +812,32 @@ app.get('*', (req, res) => {
 });
 
 function startServer(port) {
-  const server = app.listen(port, () => console.log(`PlayFool server on port ${port}`));
-  return server;
+  return new Promise((resolve, reject) => {
+    const server = app.listen(port, () => {
+      console.log(`PlayFool server on port ${port}`);
+      resolve(server);
+    });
+    server.on('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        console.log(`Port ${port} in use, trying ${port + 1}...`);
+        resolve(startServer(port + 1));
+      } else {
+        console.error('Server error:', err);
+        reject(err);
+      }
+    });
+  });
 }
 
-startServer(3001);
+startServer(3001).then((server) => {
+  const port = server.address().port;
+  console.log(`PlayFool running on port ${port}`);
+  if (typeof global !== 'undefined') {
+    global.PLAYFOOL_PORT = port;
+  }
+}).catch((err) => {
+  console.error('Failed to start server:', err);
+});
 
 // Shut down server and exit when NW.js window closes
 if (typeof nw !== 'undefined') {
