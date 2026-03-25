@@ -39,8 +39,6 @@ jobs:
           Invoke-WebRequest -Uri $url -OutFile nwjs.zip
           Expand-Archive -Path nwjs.zip -DestinationPath .
           Rename-Item "nwjs-v${nwVersion}-win-x64" "nwjs-dist"
-          Write-Host "NW.js extracted:"
-          Get-ChildItem nwjs-dist | Select-Object -First 5
 
       - name: Download ffmpeg
         run: |
@@ -60,7 +58,6 @@ jobs:
           Copy-Item -Recurse "nwjs-dist" $dist
 
           # Copy app files
-          Copy-Item "package.json" "$dist/"
           Copy-Item "server.js" "$dist/"
           Copy-Item "index.html" "$dist/"
           Copy-Item "main.js" "$dist/"
@@ -68,13 +65,33 @@ jobs:
           Copy-Item -Recurse "ffmpeg" "$dist/ffmpeg"
           Copy-Item -Recurse "public" "$dist/public"
 
-          # Copy node_modules (only production deps)
-          Copy-Item -Recurse "node_modules/express" "$dist/node_modules/express"
-          Copy-Item -Recurse "node_modules/cors" "$dist/node_modules/cors"
+          # Create a production package.json with only server dependencies
+          @"
+          {
+            "name": "playfool",
+            "version": "1.0.0",
+            "main": "index.html",
+            "node-main": "server.js",
+            "window": {
+              "title": "PlayFool",
+              "width": 1200,
+              "height": 800,
+              "min_width": 900,
+              "min_height": 600,
+              "icon": "public/icon.png",
+              "toolbar": false,
+              "frame": true
+            },
+            "dependencies": {
+              "express": "^4.21.2",
+              "cors": "^2.8.5"
+            }
+          }
+          "@ | Out-File -Encoding utf8 "$dist/package.json"
 
-          # Install production deps fresh
+          # Install only server dependencies in the dist folder
           Push-Location $dist
-          npm install --omit=dev --ignore-scripts 2>$null
+          npm install --omit=dev
           Pop-Location
 
           # Rename nw.exe to PlayFool.exe
@@ -99,10 +116,10 @@ jobs:
           body: |
             ## PlayFool - Desktop Music & Video Player
 
-            ### Download
+            ### Download & Install
             1. Download `PlayFool-Windows.zip`
             2. Extract to any folder
-            3. Run `Launch PlayFool.bat` or `PlayFool.exe`
+            3. Run `PlayFool.exe` or `Launch PlayFool.bat`
 
             ### Requirements
             - Windows 10/11 (64-bit)
