@@ -272,8 +272,9 @@ app.get('/api/library', (req, res) => {
   const songs = files.map(f => ({
     id: 'dl-' + crypto.createHash('md5').update(f.name).digest('hex'),
     title: path.basename(f.name, path.extname(f.name)).replace(/_/g, ' '),
-    artist: 'YouTube',
+    artist: 'PlayFool',
     file: `downloads/${f.name}`,
+    fullPath: path.join(downloadsDir, f.name),
     size: f.size,
     date: new Date(f.mtime).toISOString().replace('T', ' ').substring(0, 16),
   }));
@@ -426,6 +427,7 @@ app.get('/api/videos', (req, res) => {
     id: 'vid-' + crypto.createHash('md5').update(f.name).digest('hex'),
     title: path.basename(f.name, path.extname(f.name)).replace(/_/g, ' '),
     file: `videos/${f.name}`,
+    fullPath: path.join(videosDir, f.name),
     size: f.size,
     date: new Date(f.mtime).toISOString().replace('T', ' ').substring(0, 16),
   }));
@@ -604,6 +606,177 @@ function parseLrc(content) {
 
   return { lines: parsed, synced: isSynced };
 }
+
+// API: Scan PC for music files
+app.get('/api/scan', async (req, res) => {
+  const homeDir = os.homedir();
+  const scanDirs = [
+    path.join(homeDir, 'Music'),
+    path.join(homeDir, 'Downloads'),
+    path.join(homeDir, 'Desktop'),
+    path.join(homeDir, 'Documents'),
+  ];
+
+  const audioExts = /\.(mp3|m4a|opus|ogg|wav|flac|aac|wma)$/i;
+  const allSongs = [];
+  const seen = new Set();
+
+  // Also include PlayFool downloads
+  if (fs.existsSync(downloadsDir)) {
+    const dlFiles = fs.readdirSync(downloadsDir).filter(f => audioExts.test(f));
+    for (const f of dlFiles) {
+      const fullPath = path.join(downloadsDir, f);
+      seen.add(fullPath.toLowerCase());
+    }
+  }
+
+  function scanDir(dir, depth = 0) {
+    if (depth > 3) return; // Don't go too deep
+    try {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory() && depth < 3) {
+          // Skip system/hidden folders
+          if (entry.name.startsWith('.') || entry.name === 'node_modules' ||
+              entry.name === 'AppData' || entry.name === '$Recycle.Bin') continue;
+          scanDir(fullPath, depth + 1);
+        } else if (entry.isFile() && audioExts.test(entry.name)) {
+          const key = fullPath.toLowerCase();
+          if (!seen.has(key)) {
+            seen.add(key);
+            try {
+              const stat = fs.statSync(fullPath);
+              allSongs.push({
+                id: 'scan-' + crypto.createHash('md5').update(fullPath).digest('hex'),
+                title: path.basename(entry.name, path.extname(entry.name)).replace(/_/g, ' '),
+                artist: path.basename(dir),
+                file: fullPath,
+                fullPath: fullPath,
+                size: stat.size,
+                date: new Date(stat.mtimeMs).toISOString().replace('T', ' ').substring(0, 16),
+                source: 'local',
+              });
+            } catch (e) { /* skip unreadable files */ }
+          }
+        }
+      }
+    } catch (e) { /* skip inaccessible dirs */ }
+  }
+
+  for (const dir of scanDirs) {
+    if (fs.existsSync(dir)) scanDir(dir);
+  }
+
+  // Sort by modification date, newest first
+  allSongs.sort((a, b) => b.date.localeCompare(a.date));
+
+  res.json({ songs: allSongs });
+});
+
+// Serve scanned local files
+app.get('/api/localfile', (req, res) => {
+  const filePath = req.query.path;
+  if (!filePath) return res.status(400).send('No path');
+
+  // Security: only serve audio files from user directories
+  const homeDir = os.homedir();
+  const resolved = path.resolve(filePath);
+  if (!resolved.startsWith(homeDir)) {
+    return res.status(403).send('Access denied');
+  }
+
+  if (!fs.existsSync(resolved)) return res.status(404).send('File not found');
+
+  const ext = path.extname(resolved).toLowerCase();
+  const mime = MIME_TYPES[ext] || 'application/octet-stream';
+  res.setHeader('Content-Type', mime);
+  res.setHeader('Accept-Ranges', 'bytes');
+  fs.createReadStream(resolved).pipe(res);
+});
+
+// API: Scan PC for video files
+app.get('/api/scan/videos', async (req, res) => {
+  const homeDir = os.homedir();
+  const scanDirs = [
+    path.join(homeDir, 'Videos'),
+    path.join(homeDir, 'Downloads'),
+    path.join(homeDir, 'Desktop'),
+    path.join(homeDir, 'Documents'),
+  ];
+
+  const videoExts = /\.(mp4|mkv|avi|mov|wmv|flv|webm)$/i;
+  const allVideos = [];
+  const seen = new Set();
+
+  // Exclude PlayFool videos dir (already shown)
+  if (fs.existsSync(videosDir)) {
+    const dlFiles = fs.readdirSync(videosDir).filter(f => videoExts.test(f));
+    for (const f of dlFiles) {
+      seen.add(path.join(videosDir, f).toLowerCase());
+    }
+  }
+
+  function scanDir(dir, depth = 0) {
+    if (depth > 3) return;
+    try {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory() && depth < 3) {
+          if (entry.name.startsWith('.') || entry.name === 'node_modules' ||
+              entry.name === 'AppData' || entry.name === '$Recycle.Bin') continue;
+          scanDir(fullPath, depth + 1);
+        } else if (entry.isFile() && videoExts.test(entry.name)) {
+          const key = fullPath.toLowerCase();
+          if (!seen.has(key)) {
+            seen.add(key);
+            try {
+              const stat = fs.statSync(fullPath);
+              allVideos.push({
+                id: 'scan-vid-' + crypto.createHash('md5').update(fullPath).digest('hex'),
+                title: path.basename(entry.name, path.extname(entry.name)).replace(/_/g, ' '),
+                file: fullPath,
+                fullPath: fullPath,
+                size: stat.size,
+                date: new Date(stat.mtimeMs).toISOString().replace('T', ' ').substring(0, 16),
+                source: 'scanned',
+              });
+            } catch (e) { /* skip */ }
+          }
+        }
+      }
+    } catch (e) { /* skip */ }
+  }
+
+  for (const dir of scanDirs) {
+    if (fs.existsSync(dir)) scanDir(dir);
+  }
+
+  allVideos.sort((a, b) => b.date.localeCompare(a.date));
+  res.json({ videos: allVideos });
+});
+
+// Serve scanned local video files
+app.get('/api/localvideo', (req, res) => {
+  const filePath = req.query.path;
+  if (!filePath) return res.status(400).send('No path');
+
+  const homeDir = os.homedir();
+  const resolved = path.resolve(filePath);
+  if (!resolved.startsWith(homeDir)) {
+    return res.status(403).send('Access denied');
+  }
+
+  if (!fs.existsSync(resolved)) return res.status(404).send('File not found');
+
+  const ext = path.extname(resolved).toLowerCase();
+  const mimeMap = { '.mp4': 'video/mp4', '.mkv': 'video/x-matroska', '.avi': 'video/x-msvideo',
+    '.mov': 'video/quicktime', '.wmv': 'video/x-ms-wmv', '.flv': 'video/x-flv', '.webm': 'video/webm' };
+  res.setHeader('Content-Type', mimeMap[ext] || 'video/mp4');
+  res.setHeader('Accept-Ranges', 'bytes');
+  fs.createReadStream(resolved).pipe(res);
+});
 
 // Catch-all: serve React app for client-side routing
 app.get('*', (req, res) => {

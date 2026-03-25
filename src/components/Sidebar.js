@@ -14,11 +14,11 @@ function Sidebar() {
         <NavLink to="/" className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ''}`}>
           <IoHome /> <span>My Music</span>
         </NavLink>
+        <NavLink to="/videos" className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ''}`}>
+          <IoVideocam /> <span>My Videos</span>
+        </NavLink>
         <NavLink to="/youtube" className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ''}`}>
           <IoLogoYoutube /> <span>YouTube</span>
-        </NavLink>
-        <NavLink to="/videos" className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ''}`}>
-          <IoVideocam /> <span>Videos</span>
         </NavLink>
         <NavLink to="/playlists" className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ''}`}>
           <IoList /> <span>Playlists</span>
