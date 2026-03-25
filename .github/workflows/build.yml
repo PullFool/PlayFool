@@ -70,18 +70,32 @@ jobs:
 
           '{"name":"playfool","version":"1.0.0","main":"index.html","node-main":"server.js","window":{"title":"PlayFool","width":1200,"height":800,"min_width":900,"min_height":600,"icon":"public/icon.png","toolbar":false,"frame":true},"dependencies":{"express":"^4.21.2","cors":"^2.8.5"}}' | Set-Content -Path "$dist/package.json" -Encoding ASCII -NoNewline
 
-          # Install server deps in a temp folder then copy
-          New-Item -ItemType Directory -Force -Path "server-deps"
-          Copy-Item "$dist/package.json" "server-deps/package.json"
-          Push-Location "server-deps"
-          npm install --omit=dev 2>&1
-          Pop-Location
-          Copy-Item -Recurse "server-deps/node_modules" "$dist/node_modules"
+          # Copy ALL node_modules from the project (already installed from step 1)
+          # Then remove React/build-only deps to save space
+          Copy-Item -Recurse "node_modules" "$dist/node_modules"
+
+          # Remove large build-only packages not needed at runtime
+          $removeDeps = @("react-scripts", "@testing-library", "nw",
+            "webpack", "babel-loader", "@babel", "eslint", "jest",
+            "typescript", "postcss", "sass-loader", "css-loader",
+            "style-loader", "terser-webpack-plugin", "html-webpack-plugin",
+            "workbox-webpack-plugin", "mini-css-extract-plugin")
+          foreach ($dep in $removeDeps) {
+            $depPath = "$dist/node_modules/$dep"
+            if (Test-Path $depPath) {
+              Remove-Item -Recurse -Force $depPath
+              Write-Host "Removed: $dep"
+            }
+            # Also remove scoped packages
+            Get-ChildItem "$dist/node_modules" -Directory -Filter "$dep*" -ErrorAction SilentlyContinue | ForEach-Object {
+              Remove-Item -Recurse -Force $_.FullName
+              Write-Host "Removed: $($_.Name)"
+            }
+          }
 
           Write-Host "=== Verify deps ==="
           Write-Host "express: $(Test-Path "$dist/node_modules/express")"
           Write-Host "cors: $(Test-Path "$dist/node_modules/cors")"
-          Get-ChildItem "$dist/node_modules" -Directory | ForEach-Object { Write-Host $_.Name }
 
           Rename-Item "$dist/nw.exe" "PlayFool.exe"
 
@@ -186,16 +200,17 @@ jobs:
 
           echo '{"name":"playfool","version":"1.0.0","main":"index.html","node-main":"server.js","window":{"title":"PlayFool","width":1200,"height":800,"min_width":900,"min_height":600,"icon":"public/icon.png","toolbar":false,"frame":true},"dependencies":{"express":"^4.21.2","cors":"^2.8.5"}}' > "$RESOURCES/package.json"
 
-          # Install server deps in a temp folder then copy
-          mkdir -p server-deps
-          cp "$RESOURCES/package.json" server-deps/package.json
-          cd server-deps
-          npm install --omit=dev
-          cd -
-          cp -R server-deps/node_modules "$RESOURCES/node_modules"
+          # Copy node_modules from main project
+          cp -R node_modules "$RESOURCES/node_modules"
+
+          # Remove large build-only packages
+          for dep in react-scripts @testing-library nw webpack @babel eslint jest typescript postcss; do
+            rm -rf "$RESOURCES/node_modules/$dep" 2>/dev/null
+          done
 
           echo "=== Verify deps ==="
-          ls "$RESOURCES/node_modules/"
+          echo "express: $(test -d "$RESOURCES/node_modules/express" && echo YES || echo NO)"
+          echo "cors: $(test -d "$RESOURCES/node_modules/cors" && echo YES || echo NO)"
 
           PLIST="$APP/PlayFool.app/Contents/Info.plist"
           if [ -f "$PLIST" ]; then
