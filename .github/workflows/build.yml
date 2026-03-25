@@ -68,32 +68,24 @@ jobs:
           Copy-Item -Recurse "bin" "$dist/bin"
           Copy-Item -Recurse "public" "$dist/public"
 
-          @"
-          {
-            "name": "playfool",
-            "version": "1.0.0",
-            "main": "index.html",
-            "node-main": "server.js",
-            "window": {
-              "title": "PlayFool",
-              "width": 1200,
-              "height": 800,
-              "min_width": 900,
-              "min_height": 600,
-              "icon": "public/icon.png",
-              "toolbar": false,
-              "frame": true
-            },
-            "dependencies": {
-              "express": "^4.21.2",
-              "cors": "^2.8.5"
-            }
-          }
-          "@ | Out-File -Encoding utf8 "$dist/package.json"
+          '{"name":"playfool","version":"1.0.0","main":"index.html","node-main":"server.js","window":{"title":"PlayFool","width":1200,"height":800,"min_width":900,"min_height":600,"icon":"public/icon.png","toolbar":false,"frame":true},"dependencies":{"express":"^4.21.2","cors":"^2.8.5"}}' | Set-Content -Path "$dist/package.json" -Encoding ASCII -NoNewline
 
           Push-Location $dist
-          npm install --omit=dev
+          npm install --omit=dev 2>&1
           Pop-Location
+
+          # Verify server deps installed
+          Write-Host "=== Checking node_modules ==="
+          Write-Host "express exists: $(Test-Path "$dist/node_modules/express")"
+          Write-Host "cors exists: $(Test-Path "$dist/node_modules/cors")"
+          if (-not (Test-Path "$dist/node_modules/express")) {
+            Write-Host "ERROR: express not installed, retrying..."
+            Push-Location $dist
+            npm install express cors --save 2>&1
+            Pop-Location
+          }
+          Write-Host "node_modules contents:"
+          Get-ChildItem "$dist/node_modules" -Directory | Select-Object -First 20 | ForEach-Object { Write-Host $_.Name }
 
           Rename-Item "$dist/nw.exe" "PlayFool.exe"
 

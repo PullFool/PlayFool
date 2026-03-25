@@ -16,19 +16,28 @@
   <div class="loading">Loading PlayFool...</div>
   <script>
     // Wait for the backend server to start, then load the React app from Express
+    let attempts = 0;
     function waitForServer() {
+      attempts++;
       fetch('http://localhost:3001/api/library')
         .then(res => {
           if (res.ok) {
-            // Server is ready, load the React app served by Express
             window.location.href = 'http://localhost:3001';
           } else {
-            setTimeout(waitForServer, 200);
+            retry();
           }
         })
         .catch(() => {
-          setTimeout(waitForServer, 200);
+          retry();
         });
+    }
+    function retry() {
+      if (attempts > 50) {
+        document.querySelector('.loading').innerHTML =
+          'Server failed to start.<br><small style="font-size:14px;color:#999;">Check if port 3001 is in use or if node_modules/express exists.</small>';
+        return;
+      }
+      setTimeout(waitForServer, 200);
     }
     waitForServer();
   </script>
