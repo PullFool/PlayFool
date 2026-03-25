@@ -29,40 +29,40 @@ function Player({ showLyrics, onToggleLyrics }) {
     seekTo(percent * duration);
   }, [duration, seekTo]);
 
-  if (!currentSong) return null;
-
   return (
     <div className={styles.bar}>
-      <div className={styles.progressTop} ref={seekBarRef} onClick={handleSeekClick}>
-        <div className={styles.progressBg} />
-        <div className={styles.progressFill} style={{ width: `${progress}%` }} />
-      </div>
+      {currentSong && (
+        <div className={styles.progressTop} ref={seekBarRef} onClick={handleSeekClick}>
+          <div className={styles.progressBg} />
+          <div className={styles.progressFill} style={{ width: `${progress}%` }} />
+        </div>
+      )}
 
       <div className={styles.inner}>
-        <div className={styles.song} onClick={() => setShowNowPlaying(true)}>
+        <div className={styles.song} onClick={() => currentSong && setShowNowPlaying(true)}>
           <div className={styles.art}>
-            {currentSong.cover ? (
+            {currentSong?.cover ? (
               <img src={currentSong.cover} alt="" />
             ) : (
               <IoMusicalNotes className={styles.artIcon} />
             )}
           </div>
           <div className={styles.info}>
-            <div className={styles.title}>{currentSong.title}</div>
-            <div className={styles.artist}>{currentSong.artist || 'Unknown'}</div>
+            <div className={styles.title}>{currentSong ? currentSong.title : 'No song playing'}</div>
+            <div className={styles.artist}>{currentSong ? (currentSong.artist || 'Unknown') : 'Select a song to play'}</div>
           </div>
         </div>
 
         <div className={styles.controls}>
-          <button className={styles.controlBtn} onClick={skipPrev}><IoPlaySkipBack /></button>
-          <button className={styles.playBtn} onClick={togglePlayPause}>
+          <button className={styles.controlBtn} onClick={skipPrev} disabled={!currentSong}><IoPlaySkipBack /></button>
+          <button className={styles.playBtn} onClick={togglePlayPause} disabled={!currentSong}>
             {isPlaying ? <IoPause /> : <IoPlay />}
           </button>
-          <button className={styles.controlBtn} onClick={skipNext}><IoPlaySkipForward /></button>
+          <button className={styles.controlBtn} onClick={skipNext} disabled={!currentSong}><IoPlaySkipForward /></button>
         </div>
 
         <div className={styles.right}>
-          {mediaType === 'video' && (
+          {currentSong && mediaType === 'video' && (
             <button
               className={`${styles.lyricsBtn} ${showVideoPlayer ? styles.lyricsBtnActive : ''}`}
               onClick={() => setShowVideoPlayer(prev => !prev)}
@@ -71,13 +71,15 @@ function Player({ showLyrics, onToggleLyrics }) {
               <IoVideocam />
             </button>
           )}
-          <button
-            className={`${styles.lyricsBtn} ${showLyrics ? styles.lyricsBtnActive : ''}`}
-            onClick={onToggleLyrics}
-            title="Lyrics"
-          >
-            <IoDocumentText />
-          </button>
+          {currentSong && (
+            <button
+              className={`${styles.lyricsBtn} ${showLyrics ? styles.lyricsBtnActive : ''}`}
+              onClick={onToggleLyrics}
+              title="Lyrics"
+            >
+              <IoDocumentText />
+            </button>
+          )}
           <span className={styles.time}>{formatTime(currentTime)} / {formatTime(duration)}</span>
           <div className={styles.volume}>
             <button className={styles.volumeBtn} onClick={() => setVolumeLevel(volume > 0 ? 0 : 0.8)}>

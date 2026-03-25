@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { usePlayer } from '../context/PlayerContext';
-import { IoCloudUpload, IoMusicalNotes, IoPlay, IoAdd, IoRefresh, IoShuffle } from 'react-icons/io5';
+import { IoCloudUpload, IoMusicalNotes, IoPlay, IoAdd, IoRefresh, IoShuffle, IoSearch } from 'react-icons/io5';
 import styles from './LocalMusic.module.css';
 
 const API_BASE = process.env.REACT_APP_API_URL;
@@ -8,13 +8,16 @@ const SERVER_BASE = process.env.REACT_APP_SERVER_URL;
 
 function LocalMusic() {
   const { playSong, shufflePlay, currentSong, isPlaying, playlists, addToPlaylist } = usePlayer();
-  const [localSongs, setLocalSongs] = useState([]);
+  const [droppedSongs, setDroppedSongs] = useState([]);
   const [downloadedSongs, setDownloadedSongs] = useState([]);
+  const [scannedSongs, setScannedSongs] = useState([]);
   const [showPlaylistMenu, setShowPlaylistMenu] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [scanning, setScanning] = useState(false);
   const fileInputRef = useRef();
 
   const loadLibrary = useCallback(async () => {
+    setLoading(true);
     try {
       const res = await fetch(`${API_BASE}/library`);
       const data = await res.json();
@@ -22,6 +25,7 @@ function LocalMusic() {
         setDownloadedSongs(data.songs.map(s => ({
           ...s,
           url: `${SERVER_BASE}/${s.file}`,
+          location: s.fullPath || s.file,
           cover: null,
           source: 'youtube',
         })));
@@ -35,11 +39,32 @@ function LocalMusic() {
 
   useEffect(() => { loadLibrary(); }, [loadLibrary]);
 
+  const handleScan = useCallback(async () => {
+    setScanning(true);
+    try {
+      const res = await fetch(`${API_BASE}/scan`);
+      const data = await res.json();
+      if (data.songs) {
+        setScannedSongs(data.songs.map(s => ({
+          ...s,
+          url: `${SERVER_BASE}/api/localfile?path=${encodeURIComponent(s.fullPath)}`,
+          location: s.fullPath,
+          cover: null,
+          source: 'scanned',
+        })));
+      }
+    } catch (e) {
+      console.error('Failed to scan:', e);
+    } finally {
+      setScanning(false);
+    }
+  }, []);
+
   const handleFiles = useCallback((files) => {
     const audioFiles = Array.from(files).filter(f =>
       f.type.startsWith('audio/') || /\.(mp3|m4a|wav|ogg|flac|aac)$/i.test(f.name)
     );
-    setLocalSongs(prev => [...prev, ...audioFiles.map(file => ({
+    setDroppedSongs(prev => [...prev, ...audioFiles.map(file => ({
       id: `local-${Date.now()}-${Math.random()}`,
       title: file.name.replace(/\.[^/.]+$/, ''),
       artist: 'Local File',
@@ -54,15 +79,30 @@ function LocalMusic() {
     handleFiles(e.dataTransfer.files);
   }, [handleFiles]);
 
-  const allSongs = [...localSongs, ...downloadedSongs];
+  // Merge all sources, deduplicate by title
+  const seen = new Set();
+  const allSongs = [];
+  for (const song of [...downloadedSongs, ...droppedSongs, ...scannedSongs]) {
+    const key = song.title.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      allSongs.push(song);
+    }
+  }
 
   return (
     <div className="page">
       <div className="flex-between mb-24">
         <h1 className="page-title mb-0">My Music</h1>
-        <button onClick={loadLibrary} className="btn-icon" title="Refresh library">
-          <IoRefresh />
-        </button>
+        <div className="flex-row gap-8">
+          <button onClick={handleScan} className="btn btn-secondary" title="Scan PC for music"
+            disabled={scanning}>
+            <IoSearch /> {scanning ? 'Scanning...' : 'Scan PC'}
+          </button>
+          <button onClick={loadLibrary} className="btn-icon" title="Refresh library">
+            <IoRefresh />
+          </button>
+        </div>
       </div>
 
       <div className="upload-area"
@@ -85,7 +125,7 @@ function LocalMusic() {
         <div className="empty-state">
           <IoMusicalNotes className="icon" />
           <h3>No music yet</h3>
-          <p>Upload files or download from YouTube</p>
+          <p>Upload files, download from YouTube, or scan your PC</p>
         </div>
       ) : (
         <>
@@ -121,6 +161,11 @@ function LocalMusic() {
                 <div className="song-item-info">
                   <div className="song-item-title">{song.title}</div>
                   <div className="song-item-artist">{song.artist}</div>
+                  {song.location && (
+                    <div className={styles.songLocation} title={song.location}>
+                      {song.location}
+                    </div>
+                  )}
                 </div>
                 <div className={styles.addWrapper}>
                   <button className="btn-icon btn-icon-muted" title="Add to playlist"

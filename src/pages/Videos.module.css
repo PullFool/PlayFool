@@ -64,3 +64,13 @@
   font-size: 11px;
   color: var(--text-secondary);
 }
+
+.cardLocation {
+  font-size: 10px;
+  color: var(--text-secondary);
+  opacity: 0.6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
