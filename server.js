@@ -185,7 +185,8 @@ app.get('/api/stream', async (req, res) => {
 
   if (streamType === 'video') {
     // Get video+audio combined stream (includes sound)
-    const format = 'best[ext=mp4][height<=720]/best[ext=mp4]/best';
+    const quality = parseInt(req.query.quality, 10) || 720;
+    const format = `best[ext=mp4][height<=${quality}]/best[ext=mp4]/best`;
     const args = [...ytdlp.args, '-f', format, '--get-url', '--no-playlist', url];
     const { stdout } = await runCommand(ytdlp.cmd, args, { timeout: 15000 });
     const videoUrl = stdout.trim();

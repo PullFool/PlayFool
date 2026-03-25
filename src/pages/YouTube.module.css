@@ -86,6 +86,16 @@
   color: var(--green);
 }
 
+/* Preview quality selector */
+.qualitySelect {
+  background: var(--bg-surface); color: var(--text-primary);
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 12px; font-size: 13px; font-weight: 600;
+  cursor: pointer; outline: none; flex-shrink: 0;
+}
+.qualitySelect:hover { border-color: var(--green); }
+.qualitySelect:focus { border-color: var(--green); }
+
 /* Loader overlay */
 .loaderOverlay {
   position: fixed; top: 0; left: 0; right: 0; bottom: 0;
