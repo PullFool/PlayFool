@@ -817,4 +817,13 @@ function startServer(port) {
 }
 
 startServer(3001);
+
+// Shut down server and exit when NW.js window closes
+if (typeof nw !== 'undefined') {
+  nw.Window.get().on('close', function() {
+    this.close(true);
+    process.exit(0);
+  });
+}
+
 module.exports = { startServer };
