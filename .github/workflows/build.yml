@@ -70,22 +70,18 @@ jobs:
 
           '{"name":"playfool","version":"1.0.0","main":"index.html","node-main":"server.js","window":{"title":"PlayFool","width":1200,"height":800,"min_width":900,"min_height":600,"icon":"public/icon.png","toolbar":false,"frame":true},"dependencies":{"express":"^4.21.2","cors":"^2.8.5"}}' | Set-Content -Path "$dist/package.json" -Encoding ASCII -NoNewline
 
-          Push-Location $dist
+          # Install server deps in a temp folder then copy
+          New-Item -ItemType Directory -Force -Path "server-deps"
+          Copy-Item "$dist/package.json" "server-deps/package.json"
+          Push-Location "server-deps"
           npm install --omit=dev 2>&1
           Pop-Location
+          Copy-Item -Recurse "server-deps/node_modules" "$dist/node_modules"
 
-          # Verify server deps installed
-          Write-Host "=== Checking node_modules ==="
-          Write-Host "express exists: $(Test-Path "$dist/node_modules/express")"
-          Write-Host "cors exists: $(Test-Path "$dist/node_modules/cors")"
-          if (-not (Test-Path "$dist/node_modules/express")) {
-            Write-Host "ERROR: express not installed, retrying..."
-            Push-Location $dist
-            npm install express cors --save 2>&1
-            Pop-Location
-          }
-          Write-Host "node_modules contents:"
-          Get-ChildItem "$dist/node_modules" -Directory | Select-Object -First 20 | ForEach-Object { Write-Host $_.Name }
+          Write-Host "=== Verify deps ==="
+          Write-Host "express: $(Test-Path "$dist/node_modules/express")"
+          Write-Host "cors: $(Test-Path "$dist/node_modules/cors")"
+          Get-ChildItem "$dist/node_modules" -Directory | ForEach-Object { Write-Host $_.Name }
 
           Rename-Item "$dist/nw.exe" "PlayFool.exe"
 
@@ -190,9 +186,16 @@ jobs:
 
           echo '{"name":"playfool","version":"1.0.0","main":"index.html","node-main":"server.js","window":{"title":"PlayFool","width":1200,"height":800,"min_width":900,"min_height":600,"icon":"public/icon.png","toolbar":false,"frame":true},"dependencies":{"express":"^4.21.2","cors":"^2.8.5"}}' > "$RESOURCES/package.json"
 
-          cd "$RESOURCES"
+          # Install server deps in a temp folder then copy
+          mkdir -p server-deps
+          cp "$RESOURCES/package.json" server-deps/package.json
+          cd server-deps
           npm install --omit=dev
           cd -
+          cp -R server-deps/node_modules "$RESOURCES/node_modules"
+
+          echo "=== Verify deps ==="
+          ls "$RESOURCES/node_modules/"
 
           PLIST="$APP/PlayFool.app/Contents/Info.plist"
           if [ -f "$PLIST" ]; then
