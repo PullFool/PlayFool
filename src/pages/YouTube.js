@@ -24,6 +24,7 @@ function YouTube() {
   const [qualities, setQualities] = useState([]);
   const [selectedQuality, setSelectedQuality] = useState('720');
   const [loadingQualities, setLoadingQualities] = useState(false);
+  const [previewQuality, setPreviewQuality] = useState('720');
 
   // Save state when it changes so it persists across navigation
   useEffect(() => { savedQuery = query; }, [query]);
@@ -123,7 +124,7 @@ function YouTube() {
     setLoadingPreview(true);
     setPreviewingId(video.id);
     try {
-      const res = await fetch(`${API_BASE}/stream?id=${video.id}&type=video`);
+      const res = await fetch(`${API_BASE}/stream?id=${video.id}&type=video&quality=${previewQuality}`);
       const data = await res.json();
       if (data.error || !data.url) {
         setError('Preview not available');
@@ -166,6 +167,17 @@ function YouTube() {
           placeholder="Search for music or videos..."
           className="search-input"
         />
+        <select
+          value={previewQuality}
+          onChange={(e) => setPreviewQuality(e.target.value)}
+          className={styles.qualitySelect}
+          title="Preview quality"
+        >
+          <option value="360">360p</option>
+          <option value="480">480p</option>
+          <option value="720">720p</option>
+          <option value="1080">1080p</option>
+        </select>
         <button onClick={search} disabled={searching} className="btn btn-primary">
           <IoSearch /> {searching ? 'Searching...' : 'Search'}
         </button>
