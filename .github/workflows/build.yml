@@ -151,13 +151,23 @@ jobs:
       - name: Package macOS app
         run: |
           APP="PlayFool-macOS"
-          NWAPP="$APP/nwjs.app"
+          mkdir -p "$APP"
+
+          # Find the .app bundle (could be nwjs.app or other name)
+          echo "Contents of nwjs-dist:"
+          ls -la nwjs-dist/
+          NWAPP_SRC=$(find nwjs-dist -maxdepth 1 -name "*.app" -type d | head -1)
+          if [ -z "$NWAPP_SRC" ]; then
+            echo "Error: No .app found in nwjs-dist"
+            exit 1
+          fi
+          echo "Found app: $NWAPP_SRC"
 
           # Copy NW.js app bundle
-          cp -R nwjs-dist/nwjs.app "$NWAPP"
+          cp -R "$NWAPP_SRC" "$APP/PlayFool.app"
 
           # Copy app files into the app bundle Resources
-          RESOURCES="$NWAPP/Contents/Resources/app.nw"
+          RESOURCES="$APP/PlayFool.app/Contents/Resources/app.nw"
           mkdir -p "$RESOURCES"
           cp server.js "$RESOURCES/"
           cp index.html "$RESOURCES/"
@@ -166,45 +176,45 @@ jobs:
           cp -R public "$RESOURCES/public"
 
           # Copy ffmpeg if available
-          if [ -d ffmpeg ]; then
+          if [ -d ffmpeg ] && [ "$(ls -A ffmpeg 2>/dev/null)" ]; then
             cp -R ffmpeg "$RESOURCES/ffmpeg"
           fi
 
           # Create production package.json
           cat > "$RESOURCES/package.json" << 'PKGJSON'
-          {
-            "name": "playfool",
-            "version": "1.0.0",
-            "main": "index.html",
-            "node-main": "server.js",
-            "window": {
-              "title": "PlayFool",
-              "width": 1200,
-              "height": 800,
-              "min_width": 900,
-              "min_height": 600,
-              "icon": "public/icon.png",
-              "toolbar": false,
-              "frame": true
-            },
-            "dependencies": {
-              "express": "^4.21.2",
-              "cors": "^2.8.5"
-            }
-          }
-          PKGJSON
+{
+  "name": "playfool",
+  "version": "1.0.0",
+  "main": "index.html",
+  "node-main": "server.js",
+  "window": {
+    "title": "PlayFool",
+    "width": 1200,
+    "height": 800,
+    "min_width": 900,
+    "min_height": 600,
+    "icon": "public/icon.png",
+    "toolbar": false,
+    "frame": true
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "cors": "^2.8.5"
+  }
+}
+PKGJSON
 
           # Install server dependencies
           cd "$RESOURCES"
           npm install --omit=dev
           cd -
 
-          # Rename the app
-          mv "$NWAPP" "$APP/PlayFool.app"
-
           # Update app name in Info.plist
-          /usr/libexec/PlistBuddy -c "Set :CFBundleName PlayFool" "$APP/PlayFool.app/Contents/Info.plist"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName PlayFool" "$APP/PlayFool.app/Contents/Info.plist"
+          PLIST="$APP/PlayFool.app/Contents/Info.plist"
+          if [ -f "$PLIST" ]; then
+            /usr/libexec/PlistBuddy -c "Set :CFBundleName PlayFool" "$PLIST" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName PlayFool" "$PLIST" 2>/dev/null || true
+          fi
 
           # Zip it
           cd "$APP"
