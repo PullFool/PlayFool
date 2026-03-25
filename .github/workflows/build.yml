@@ -91,9 +91,9 @@ jobs:
           # Rename nw.exe to PlayFool.exe
           Rename-Item "$dist/nw.exe" "PlayFool.exe"
 
-          # Replace the exe icon with our custom icon using rcedit via npm
-          npm install --no-save @electron/rcedit 2>&1
-          node -e "require('@electron/rcedit')('dist/PlayFool.exe', { icon: 'public/icon.ico' }).then(() => console.log('Icon embedded')).catch(e => console.error('Icon embed failed:', e))"
+          # Replace the exe icon with our custom icon using rcedit
+          npm install --no-save rcedit 2>&1
+          node -e "require('rcedit')('dist/PlayFool.exe', { icon: 'public/icon.ico' }).then(() => console.log('Icon embedded')).catch(e => console.error('Icon embed failed:', e))"
 
       - name: Build installer with Inno Setup
         run: |
