@@ -208,6 +208,9 @@ jobs:
             rm -rf "$RESOURCES/node_modules/$dep" 2>/dev/null
           done
 
+          # Clean up broken symlinks in .bin
+          find "$RESOURCES/node_modules/.bin" -type l ! -exec test -e {} \; -delete 2>/dev/null || true
+
           echo "=== Verify deps ==="
           echo "express: $(test -d "$RESOURCES/node_modules/express" && echo YES || echo NO)"
           echo "cors: $(test -d "$RESOURCES/node_modules/cors" && echo YES || echo NO)"
@@ -218,7 +221,7 @@ jobs:
             /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName PlayFool" "$PLIST" 2>/dev/null || true
           fi
 
-          xattr -cr "$APP/PlayFool.app"
+          xattr -cr "$APP/PlayFool.app" 2>/dev/null || true
 
           printf '#!/bin/bash\ncd "$(dirname "$0")"\necho "Setting up PlayFool..."\nxattr -cr "PlayFool.app"\nchmod -R +x "PlayFool.app"\necho "Done! Opening PlayFool..."\nopen "PlayFool.app"\n' > "$APP/Install PlayFool.command"
           chmod +x "$APP/Install PlayFool.command"
