@@ -7,34 +7,43 @@
     body { margin: 0; background: #121212; }
     .loading {
       display: flex; align-items: center; justify-content: center;
+      flex-direction: column; gap: 12px;
       height: 100vh; color: #1DB954; font-family: 'Segoe UI', sans-serif;
       font-size: 24px; font-weight: 700;
     }
+    .error { font-size: 12px; color: #999; word-break: break-all; max-width: 80%; text-align: center; }
   </style>
 </head>
 <body>
-  <div class="loading">Loading PlayFool...</div>
+  <div class="loading" id="status">Loading PlayFool...</div>
   <script>
-    // Wait for the backend server to start, then load the React app from Express
+    // Start server directly from NW.js node context (not relying on node-main)
+    try {
+      require('./server');
+    } catch(e) {
+      document.getElementById('status').innerHTML =
+        'Server error:<br><span class="error">' + e.message + '</span>';
+    }
+
     let attempts = 0;
     function waitForServer() {
       attempts++;
       fetch('http://localhost:3001/api/library')
-        .then(res => {
+        .then(function(res) {
           if (res.ok) {
             window.location.href = 'http://localhost:3001';
           } else {
             retry();
           }
         })
-        .catch(() => {
+        .catch(function() {
           retry();
         });
     }
     function retry() {
       if (attempts > 50) {
-        document.querySelector('.loading').innerHTML =
-          'Server failed to start.<br><small style="font-size:14px;color:#999;">Check if port 3001 is in use or if node_modules/express exists.</small>';
+        document.getElementById('status').innerHTML +=
+          '<br><span class="error">Server did not respond after 10 seconds.</span>';
         return;
       }
       setTimeout(waitForServer, 200);
