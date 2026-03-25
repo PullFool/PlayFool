@@ -32,7 +32,7 @@ jobs:
           REACT_APP_API_URL: http://localhost:3001/api
           REACT_APP_SERVER_URL: http://localhost:3001
 
-      - name: Download NW.js SDK
+      - name: Download NW.js
         run: |
           $nwVersion = "0.92.0"
           Invoke-WebRequest -Uri "https://dl.nwjs.io/v${nwVersion}/nwjs-v${nwVersion}-win-x64.zip" -OutFile nwjs.zip
@@ -52,14 +52,14 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path "bin"
           Invoke-WebRequest -Uri "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" -OutFile "bin/yt-dlp.exe"
-          Write-Host "yt-dlp downloaded:"
           & "bin/yt-dlp.exe" --version
 
       - name: Package app
         run: |
-          $dist = "PlayFool-Windows"
-
+          $dist = "dist"
           Copy-Item -Recurse "nwjs-dist" $dist
+
+          # Copy app files
           Copy-Item "server.js" "$dist/"
           Copy-Item "index.html" "$dist/"
           Copy-Item "main.js" "$dist/"
@@ -68,50 +68,46 @@ jobs:
           Copy-Item -Recurse "bin" "$dist/bin"
           Copy-Item -Recurse "public" "$dist/public"
 
+          # Package.json for NW.js
           '{"name":"playfool","version":"1.0.0","main":"index.html","node-main":"server.js","window":{"title":"PlayFool","width":1200,"height":800,"min_width":900,"min_height":600,"icon":"public/icon.png","toolbar":false,"frame":true},"dependencies":{"express":"^4.21.2","cors":"^2.8.5"}}' | Set-Content -Path "$dist/package.json" -Encoding ASCII -NoNewline
 
-          # Copy ALL node_modules from the project (already installed from step 1)
-          # Then remove React/build-only deps to save space
-          Copy-Item -Recurse "node_modules" "$dist/node_modules"
+          # Copy only production dependencies
+          New-Item -ItemType Directory -Force -Path "$dist/node_modules"
 
-          # Remove large build-only packages not needed at runtime
-          $removeDeps = @("react-scripts", "@testing-library", "nw",
-            "webpack", "babel-loader", "@babel", "eslint", "jest",
-            "typescript", "postcss", "sass-loader", "css-loader",
-            "style-loader", "terser-webpack-plugin", "html-webpack-plugin",
-            "workbox-webpack-plugin", "mini-css-extract-plugin")
-          foreach ($dep in $removeDeps) {
-            $depPath = "$dist/node_modules/$dep"
-            if (Test-Path $depPath) {
-              Remove-Item -Recurse -Force $depPath
-              Write-Host "Removed: $dep"
-            }
-            # Also remove scoped packages
-            Get-ChildItem "$dist/node_modules" -Directory -Filter "$dep*" -ErrorAction SilentlyContinue | ForEach-Object {
-              Remove-Item -Recurse -Force $_.FullName
-              Write-Host "Removed: $($_.Name)"
-            }
-          }
+          # Install production deps only in dist
+          Push-Location $dist
+          npm install --omit=dev --no-audit --no-fund 2>&1
+          Pop-Location
 
+          # Verify
           Write-Host "=== Verify deps ==="
           Write-Host "express: $(Test-Path "$dist/node_modules/express")"
           Write-Host "cors: $(Test-Path "$dist/node_modules/cors")"
 
+          # Rename nw.exe to PlayFool.exe
           Rename-Item "$dist/nw.exe" "PlayFool.exe"
 
-          @"
-          @echo off
-          cd /d "%~dp0"
-          start "" "PlayFool.exe" --user-data-dir="%LOCALAPPDATA%\PlayFool\nw-data"
-          "@ | Out-File -Encoding ascii "$dist/Launch PlayFool.bat"
+      - name: Build installer with Inno Setup
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart("v")
+          if ([string]::IsNullOrEmpty($version)) { $version = "1.0.0" }
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion="$version" "installer.iss"
 
-          Compress-Archive -Path $dist -DestinationPath "PlayFool-Windows.zip"
+      - name: Also create portable zip
+        run: |
+          Compress-Archive -Path "dist\*" -DestinationPath "PlayFool-Windows-Portable.zip"
 
-      - name: Upload Windows build
+      - name: Upload Windows installer
         uses: actions/upload-artifact@v4
         with:
-          name: PlayFool-Windows
-          path: PlayFool-Windows.zip
+          name: PlayFool-Windows-Setup
+          path: PlayFool-Setup.exe
+
+      - name: Upload Windows portable
+        uses: actions/upload-artifact@v4
+        with:
+          name: PlayFool-Windows-Portable
+          path: PlayFool-Windows-Portable.zip
 
   build-mac:
     runs-on: macos-latest
@@ -145,17 +141,14 @@ jobs:
       - name: Download ffmpeg for macOS
         run: |
           mkdir -p ffmpeg
-          # Try multiple sources for macOS ffmpeg
           curl -L "https://evermeet.cx/ffmpeg/getrelease/zip" -o ffmpeg-dl.zip && \
             unzip -q ffmpeg-dl.zip -d ffmpeg-temp && \
-            cp ffmpeg-temp/ffmpeg ffmpeg/ffmpeg 2>/dev/null || \
-          curl -L "https://github.com/eugeneware/ffmpeg-static/releases/latest/download/ffmpeg-darwin-x64.gz" -o ffmpeg.gz && \
-            gunzip -c ffmpeg.gz > ffmpeg/ffmpeg || true
+            cp ffmpeg-temp/ffmpeg ffmpeg/ffmpeg 2>/dev/null || true
           if [ -f ffmpeg/ffmpeg ]; then
             chmod +x ffmpeg/ffmpeg
             echo "ffmpeg downloaded"
           else
-            echo "Warning: ffmpeg not bundled, user will need to install it"
+            echo "Warning: ffmpeg not bundled"
           fi
 
       - name: Download yt-dlp for macOS
@@ -170,15 +163,11 @@ jobs:
           APP="PlayFool-macOS"
           mkdir -p "$APP"
 
-          # Find the .app bundle
-          echo "Contents of nwjs-dist:"
-          ls -la nwjs-dist/
           NWAPP_SRC=$(find nwjs-dist -maxdepth 1 -name "*.app" -type d | head -1)
           if [ -z "$NWAPP_SRC" ]; then
             echo "Error: No .app found in nwjs-dist"
             exit 1
           fi
-          echo "Found app: $NWAPP_SRC"
 
           cp -R "$NWAPP_SRC" "$APP/PlayFool.app"
 
@@ -190,7 +179,6 @@ jobs:
           cp -R build "$RESOURCES/build"
           cp -R public "$RESOURCES/public"
 
-          # Copy bundled binaries
           if [ -d ffmpeg ] && [ "$(ls -A ffmpeg 2>/dev/null)" ]; then
             cp -R ffmpeg "$RESOURCES/ffmpeg"
           fi
@@ -200,29 +188,26 @@ jobs:
 
           echo '{"name":"playfool","version":"1.0.0","main":"index.html","node-main":"server.js","window":{"title":"PlayFool","width":1200,"height":800,"min_width":900,"min_height":600,"icon":"public/icon.png","toolbar":false,"frame":true},"dependencies":{"express":"^4.21.2","cors":"^2.8.5"}}' > "$RESOURCES/package.json"
 
-          # Copy node_modules from main project
-          cp -R node_modules "$RESOURCES/node_modules"
-
-          # Remove large build-only packages
-          for dep in react-scripts @testing-library nw webpack @babel eslint jest typescript postcss; do
-            rm -rf "$RESOURCES/node_modules/$dep" 2>/dev/null
-          done
-
-          # Clean up broken symlinks in .bin
-          find "$RESOURCES/node_modules/.bin" -type l ! -exec test -e {} \; -delete 2>/dev/null || true
+          # Install production deps only
+          cd "$RESOURCES"
+          npm install --omit=dev --no-audit --no-fund 2>&1
+          cd -
 
           echo "=== Verify deps ==="
           echo "express: $(test -d "$RESOURCES/node_modules/express" && echo YES || echo NO)"
           echo "cors: $(test -d "$RESOURCES/node_modules/cors" && echo YES || echo NO)"
 
+          # Update app name in plist
           PLIST="$APP/PlayFool.app/Contents/Info.plist"
           if [ -f "$PLIST" ]; then
             /usr/libexec/PlistBuddy -c "Set :CFBundleName PlayFool" "$PLIST" 2>/dev/null || true
             /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName PlayFool" "$PLIST" 2>/dev/null || true
           fi
 
+          # Remove quarantine
           xattr -cr "$APP/PlayFool.app" 2>/dev/null || true
 
+          # Create install helper script
           printf '#!/bin/bash\ncd "$(dirname "$0")"\necho "Setting up PlayFool..."\nxattr -cr "PlayFool.app"\nchmod -R +x "PlayFool.app"\necho "Done! Opening PlayFool..."\nopen "PlayFool.app"\n' > "$APP/Install PlayFool.command"
           chmod +x "$APP/Install PlayFool.command"
 
@@ -242,10 +227,15 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
 
     steps:
-      - name: Download Windows build
+      - name: Download Windows installer
         uses: actions/download-artifact@v4
         with:
-          name: PlayFool-Windows
+          name: PlayFool-Windows-Setup
+
+      - name: Download Windows portable
+        uses: actions/download-artifact@v4
+        with:
+          name: PlayFool-Windows-Portable
 
       - name: Download macOS build
         uses: actions/download-artifact@v4
@@ -256,20 +246,22 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            PlayFool-Windows.zip
+            PlayFool-Setup.exe
+            PlayFool-Windows-Portable.zip
             PlayFool-macOS.zip
           name: PlayFool ${{ github.ref_name }}
           body: |
             ## PlayFool - Desktop Music & Video Player
 
             ### Downloads
-            | Platform | File |
-            |----------|------|
-            | Windows 10/11 (64-bit) | `PlayFool-Windows.zip` |
-            | macOS (Intel) | `PlayFool-macOS.zip` |
+            | Platform | File | Description |
+            |----------|------|-------------|
+            | Windows (Installer) | `PlayFool-Setup.exe` | Recommended - installs with Start Menu & Desktop shortcut |
+            | Windows (Portable) | `PlayFool-Windows-Portable.zip` | No install needed - extract and run |
+            | macOS (Intel) | `PlayFool-macOS.zip` | See install instructions below |
 
             ### Install
-            **Windows:** Extract zip → Run `PlayFool.exe`
+            **Windows:** Download and run `PlayFool-Setup.exe` → Follow the setup wizard.
             **macOS:** Open Terminal and run:
             ```
             cd ~/Downloads && unzip -o PlayFool-macOS.zip -d PlayFool && xattr -cr PlayFool/PlayFool.app && open PlayFool/PlayFool.app
