@@ -25,6 +25,12 @@
   font-size: 28px;
 }
 
+.logoIcon {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+}
+
 .nav {
   display: flex;
   flex-direction: column;

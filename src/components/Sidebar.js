@@ -1,13 +1,13 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { IoMusicalNotes, IoLogoYoutube, IoList, IoHome, IoVideocam } from 'react-icons/io5';
+import { IoLogoYoutube, IoList, IoHome, IoVideocam } from 'react-icons/io5';
 import styles from './Sidebar.module.css';
 
 function Sidebar() {
   return (
     <aside className={styles.sidebar}>
       <div className={styles.logo}>
-        <IoMusicalNotes />
+        <img src="/icon.png" alt="PlayFool" className={styles.logoIcon} />
         <span>PlayFool</span>
       </div>
       <nav className={styles.nav}>
