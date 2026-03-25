@@ -1,4 +1,4 @@
-name: Build PlayFool Windows
+name: Build PlayFool
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  build-windows:
     runs-on: windows-latest
 
     steps:
@@ -54,10 +54,7 @@ jobs:
         run: |
           $dist = "PlayFool-Windows"
 
-          # Copy NW.js runtime
           Copy-Item -Recurse "nwjs-dist" $dist
-
-          # Copy app files
           Copy-Item "server.js" "$dist/"
           Copy-Item "index.html" "$dist/"
           Copy-Item "main.js" "$dist/"
@@ -65,7 +62,6 @@ jobs:
           Copy-Item -Recurse "ffmpeg" "$dist/ffmpeg"
           Copy-Item -Recurse "public" "$dist/public"
 
-          # Create a production package.json with only server dependencies
           @"
           {
             "name": "playfool",
@@ -89,55 +85,184 @@ jobs:
           }
           "@ | Out-File -Encoding utf8 "$dist/package.json"
 
-          # Install only server dependencies in the dist folder
           Push-Location $dist
           npm install --omit=dev
           Pop-Location
 
-          # Rename nw.exe to PlayFool.exe
           Rename-Item "$dist/nw.exe" "PlayFool.exe"
 
-          # Create launcher batch file
           @"
           @echo off
           cd /d "%~dp0"
           start "" "PlayFool.exe" --user-data-dir="%LOCALAPPDATA%\PlayFool\nw-data"
           "@ | Out-File -Encoding ascii "$dist/Launch PlayFool.bat"
 
-          # Zip it
           Compress-Archive -Path $dist -DestinationPath "PlayFool-Windows.zip"
 
+      - name: Upload Windows build
+        uses: actions/upload-artifact@v4
+        with:
+          name: PlayFool-Windows
+          path: PlayFool-Windows.zip
+
+  build-mac:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build React app
+        run: npx react-scripts build
+        env:
+          CI: false
+          REACT_APP_API_URL: http://localhost:3001/api
+          REACT_APP_SERVER_URL: http://localhost:3001
+
+      - name: Download NW.js for macOS
+        run: |
+          NW_VERSION="0.92.0"
+          curl -L "https://dl.nwjs.io/v${NW_VERSION}/nwjs-v${NW_VERSION}-osx-x64.zip" -o nwjs.zip
+          unzip -q nwjs.zip
+          mv "nwjs-v${NW_VERSION}-osx-x64" nwjs-dist
+
+      - name: Download ffmpeg for macOS
+        run: |
+          curl -L "https://evermeet.cx/ffmpeg/getrelease/zip" -o ffmpeg.zip || \
+          curl -L "https://github.com/eugeneware/ffmpeg-static/releases/latest/download/ffmpeg-darwin-x64.gz" -o ffmpeg.gz
+          if [ -f ffmpeg.zip ]; then
+            unzip -q ffmpeg.zip -d ffmpeg-temp
+            mkdir -p ffmpeg
+            cp ffmpeg-temp/ffmpeg ffmpeg/ffmpeg 2>/dev/null || true
+          elif [ -f ffmpeg.gz ]; then
+            mkdir -p ffmpeg
+            gunzip -c ffmpeg.gz > ffmpeg/ffmpeg
+            chmod +x ffmpeg/ffmpeg
+          fi
+
+      - name: Package macOS app
+        run: |
+          APP="PlayFool-macOS"
+          NWAPP="$APP/nwjs.app"
+
+          # Copy NW.js app bundle
+          cp -R nwjs-dist/nwjs.app "$NWAPP"
+
+          # Copy app files into the app bundle Resources
+          RESOURCES="$NWAPP/Contents/Resources/app.nw"
+          mkdir -p "$RESOURCES"
+          cp server.js "$RESOURCES/"
+          cp index.html "$RESOURCES/"
+          cp main.js "$RESOURCES/"
+          cp -R build "$RESOURCES/build"
+          cp -R public "$RESOURCES/public"
+
+          # Copy ffmpeg if available
+          if [ -d ffmpeg ]; then
+            cp -R ffmpeg "$RESOURCES/ffmpeg"
+          fi
+
+          # Create production package.json
+          cat > "$RESOURCES/package.json" << 'PKGJSON'
+          {
+            "name": "playfool",
+            "version": "1.0.0",
+            "main": "index.html",
+            "node-main": "server.js",
+            "window": {
+              "title": "PlayFool",
+              "width": 1200,
+              "height": 800,
+              "min_width": 900,
+              "min_height": 600,
+              "icon": "public/icon.png",
+              "toolbar": false,
+              "frame": true
+            },
+            "dependencies": {
+              "express": "^4.21.2",
+              "cors": "^2.8.5"
+            }
+          }
+          PKGJSON
+
+          # Install server dependencies
+          cd "$RESOURCES"
+          npm install --omit=dev
+          cd -
+
+          # Rename the app
+          mv "$NWAPP" "$APP/PlayFool.app"
+
+          # Update app name in Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleName PlayFool" "$APP/PlayFool.app/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName PlayFool" "$APP/PlayFool.app/Contents/Info.plist"
+
+          # Zip it
+          cd "$APP"
+          zip -r -q "../PlayFool-macOS.zip" "PlayFool.app"
+          cd ..
+
+      - name: Upload macOS build
+        uses: actions/upload-artifact@v4
+        with:
+          name: PlayFool-macOS
+          path: PlayFool-macOS.zip
+
+  release:
+    needs: [build-windows, build-mac]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+
+    steps:
+      - name: Download Windows build
+        uses: actions/download-artifact@v4
+        with:
+          name: PlayFool-Windows
+
+      - name: Download macOS build
+        uses: actions/download-artifact@v4
+        with:
+          name: PlayFool-macOS
+
       - name: Create Release
-        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: PlayFool-Windows.zip
+          files: |
+            PlayFool-Windows.zip
+            PlayFool-macOS.zip
           name: PlayFool ${{ github.ref_name }}
           body: |
             ## PlayFool - Desktop Music & Video Player
 
-            ### Download & Install
-            1. Download `PlayFool-Windows.zip`
-            2. Extract to any folder
-            3. Run `PlayFool.exe` or `Launch PlayFool.bat`
+            ### Downloads
+            | Platform | File |
+            |----------|------|
+            | Windows 10/11 (64-bit) | `PlayFool-Windows.zip` |
+            | macOS (Intel) | `PlayFool-macOS.zip` |
+
+            ### Install
+            **Windows:** Extract zip → Run `PlayFool.exe`
+            **macOS:** Extract zip → Move `PlayFool.app` to Applications → Open
 
             ### Requirements
-            - Windows 10/11 (64-bit)
             - Python with yt-dlp installed (`pip install yt-dlp`)
 
             ### Features
             - YouTube search, preview (video + audio), and download
             - MP3 and MP4 downloads with quality selection
+            - Scan PC for existing music and videos
             - Music library with playlists
             - Synced lyrics (offline)
             - Video player with side panel
             - Shuffle, repeat, seek controls
 
             Made by PullFool
-
-      - name: Upload artifact (for manual builds)
-        if: "!startsWith(github.ref, 'refs/tags/')"
-        uses: actions/upload-artifact@v4
-        with:
-          name: PlayFool-Windows
-          path: PlayFool-Windows.zip
