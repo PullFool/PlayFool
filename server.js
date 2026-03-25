@@ -65,17 +65,33 @@ function runCommand(cmd, args, options = {}) {
 }
 
 async function findYtDlp() {
-  // Try direct yt-dlp
-  const { err: directErr } = await runCommand('yt-dlp', ['--version']);
-  if (!directErr) return { cmd: 'yt-dlp', args: [] };
+  const isWin = process.platform === 'win32';
+  const ytdlpName = isWin ? 'yt-dlp.exe' : 'yt-dlp';
 
-  // Try python -m yt_dlp
-  const pythonPaths = [
-    'C:\\Python314\\python.exe', 'C:\\Python312\\python.exe',
-    'C:\\Python311\\python.exe', 'python', 'python3', 'py',
-  ];
+  // 1. Check bundled yt-dlp in app directory
+  const bundledPath = path.join(__dirname, 'bin', ytdlpName);
+  if (fs.existsSync(bundledPath)) {
+    const { err } = await runCommand(bundledPath, ['--version']);
+    if (!err) return { cmd: bundledPath, args: [] };
+  }
 
-  for (const py of pythonPaths) {
+  // 2. Check bundled in ffmpeg directory (alternative location)
+  const ffmpegDirPath = path.join(__dirname, 'ffmpeg', ytdlpName);
+  if (fs.existsSync(ffmpegDirPath)) {
+    const { err } = await runCommand(ffmpegDirPath, ['--version']);
+    if (!err) return { cmd: ffmpegDirPath, args: [] };
+  }
+
+  // 3. Try system yt-dlp
+  const { err: directErr } = await runCommand(isWin ? 'yt-dlp.exe' : 'yt-dlp', ['--version']);
+  if (!directErr) return { cmd: isWin ? 'yt-dlp.exe' : 'yt-dlp', args: [] };
+
+  // 4. Try python -m yt_dlp (fallback)
+  const pythonCmds = isWin
+    ? ['python', 'python3', 'py', 'C:\\Python314\\python.exe', 'C:\\Python312\\python.exe', 'C:\\Python311\\python.exe']
+    : ['python3', 'python'];
+
+  for (const py of pythonCmds) {
     const { err } = await runCommand(py, ['-m', 'yt_dlp', '--version']);
     if (!err) return { cmd: py, args: ['-m', 'yt_dlp'] };
   }
@@ -84,18 +100,28 @@ async function findYtDlp() {
 }
 
 function findFfmpeg() {
+  const isWin = process.platform === 'win32';
+  const ffmpegName = isWin ? 'ffmpeg.exe' : 'ffmpeg';
+
+  // Check bundled locations
   const locations = [
-    path.join(__dirname, 'ffmpeg', 'ffmpeg.exe'),
-    'C:\\ffmpeg\\bin\\ffmpeg.exe',
-    'C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe',
+    path.join(__dirname, 'ffmpeg', ffmpegName),
+    path.join(__dirname, 'bin', ffmpegName),
   ];
+
+  // Add platform-specific system locations
+  if (isWin) {
+    locations.push('C:\\ffmpeg\\bin\\ffmpeg.exe', 'C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe');
+  } else {
+    locations.push('/usr/local/bin/ffmpeg', '/opt/homebrew/bin/ffmpeg', '/usr/bin/ffmpeg');
+  }
 
   for (const p of locations) {
     if (fs.existsSync(p)) return path.dirname(p);
   }
 
   return new Promise((resolve) => {
-    execFile('ffmpeg', ['-version'], (err) => resolve(err ? null : ''));
+    execFile(ffmpegName, ['-version'], (err) => resolve(err ? null : ''));
   });
 }
 

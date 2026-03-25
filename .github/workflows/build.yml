@@ -35,20 +35,25 @@ jobs:
       - name: Download NW.js SDK
         run: |
           $nwVersion = "0.92.0"
-          $url = "https://dl.nwjs.io/v${nwVersion}/nwjs-v${nwVersion}-win-x64.zip"
-          Invoke-WebRequest -Uri $url -OutFile nwjs.zip
+          Invoke-WebRequest -Uri "https://dl.nwjs.io/v${nwVersion}/nwjs-v${nwVersion}-win-x64.zip" -OutFile nwjs.zip
           Expand-Archive -Path nwjs.zip -DestinationPath .
           Rename-Item "nwjs-v${nwVersion}-win-x64" "nwjs-dist"
 
       - name: Download ffmpeg
         run: |
-          $url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
-          Invoke-WebRequest -Uri $url -OutFile ffmpeg.zip
+          Invoke-WebRequest -Uri "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip" -OutFile ffmpeg.zip
           Expand-Archive -Path ffmpeg.zip -DestinationPath ffmpeg-temp
           New-Item -ItemType Directory -Force -Path "ffmpeg"
           $ffDir = Get-ChildItem -Path ffmpeg-temp -Directory | Select-Object -First 1
           Copy-Item "$($ffDir.FullName)/bin/ffmpeg.exe" "ffmpeg/ffmpeg.exe"
           Copy-Item "$($ffDir.FullName)/bin/ffprobe.exe" "ffmpeg/ffprobe.exe"
+
+      - name: Download yt-dlp
+        run: |
+          New-Item -ItemType Directory -Force -Path "bin"
+          Invoke-WebRequest -Uri "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" -OutFile "bin/yt-dlp.exe"
+          Write-Host "yt-dlp downloaded:"
+          & "bin/yt-dlp.exe" --version
 
       - name: Package app
         run: |
@@ -60,6 +65,7 @@ jobs:
           Copy-Item "main.js" "$dist/"
           Copy-Item -Recurse "build" "$dist/build"
           Copy-Item -Recurse "ffmpeg" "$dist/ffmpeg"
+          Copy-Item -Recurse "bin" "$dist/bin"
           Copy-Item -Recurse "public" "$dist/public"
 
           @"
@@ -136,24 +142,33 @@ jobs:
 
       - name: Download ffmpeg for macOS
         run: |
-          curl -L "https://evermeet.cx/ffmpeg/getrelease/zip" -o ffmpeg.zip || \
-          curl -L "https://github.com/eugeneware/ffmpeg-static/releases/latest/download/ffmpeg-darwin-x64.gz" -o ffmpeg.gz
-          if [ -f ffmpeg.zip ]; then
-            unzip -q ffmpeg.zip -d ffmpeg-temp
-            mkdir -p ffmpeg
-            cp ffmpeg-temp/ffmpeg ffmpeg/ffmpeg 2>/dev/null || true
-          elif [ -f ffmpeg.gz ]; then
-            mkdir -p ffmpeg
-            gunzip -c ffmpeg.gz > ffmpeg/ffmpeg
+          mkdir -p ffmpeg
+          # Try multiple sources for macOS ffmpeg
+          curl -L "https://evermeet.cx/ffmpeg/getrelease/zip" -o ffmpeg-dl.zip && \
+            unzip -q ffmpeg-dl.zip -d ffmpeg-temp && \
+            cp ffmpeg-temp/ffmpeg ffmpeg/ffmpeg 2>/dev/null || \
+          curl -L "https://github.com/eugeneware/ffmpeg-static/releases/latest/download/ffmpeg-darwin-x64.gz" -o ffmpeg.gz && \
+            gunzip -c ffmpeg.gz > ffmpeg/ffmpeg || true
+          if [ -f ffmpeg/ffmpeg ]; then
             chmod +x ffmpeg/ffmpeg
+            echo "ffmpeg downloaded"
+          else
+            echo "Warning: ffmpeg not bundled, user will need to install it"
           fi
+
+      - name: Download yt-dlp for macOS
+        run: |
+          mkdir -p bin
+          curl -L "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos" -o bin/yt-dlp
+          chmod +x bin/yt-dlp
+          bin/yt-dlp --version
 
       - name: Package macOS app
         run: |
           APP="PlayFool-macOS"
           mkdir -p "$APP"
 
-          # Find the .app bundle (could be nwjs.app or other name)
+          # Find the .app bundle
           echo "Contents of nwjs-dist:"
           ls -la nwjs-dist/
           NWAPP_SRC=$(find nwjs-dist -maxdepth 1 -name "*.app" -type d | head -1)
@@ -163,10 +178,8 @@ jobs:
           fi
           echo "Found app: $NWAPP_SRC"
 
-          # Copy NW.js app bundle
           cp -R "$NWAPP_SRC" "$APP/PlayFool.app"
 
-          # Copy app files into the app bundle Resources
           RESOURCES="$APP/PlayFool.app/Contents/Resources/app.nw"
           mkdir -p "$RESOURCES"
           cp server.js "$RESOURCES/"
@@ -175,48 +188,26 @@ jobs:
           cp -R build "$RESOURCES/build"
           cp -R public "$RESOURCES/public"
 
-          # Copy ffmpeg if available
+          # Copy bundled binaries
           if [ -d ffmpeg ] && [ "$(ls -A ffmpeg 2>/dev/null)" ]; then
             cp -R ffmpeg "$RESOURCES/ffmpeg"
           fi
+          if [ -d bin ] && [ "$(ls -A bin 2>/dev/null)" ]; then
+            cp -R bin "$RESOURCES/bin"
+          fi
 
-          # Create production package.json
-          cat > "$RESOURCES/package.json" << 'PKGJSON'
-{
-  "name": "playfool",
-  "version": "1.0.0",
-  "main": "index.html",
-  "node-main": "server.js",
-  "window": {
-    "title": "PlayFool",
-    "width": 1200,
-    "height": 800,
-    "min_width": 900,
-    "min_height": 600,
-    "icon": "public/icon.png",
-    "toolbar": false,
-    "frame": true
-  },
-  "dependencies": {
-    "express": "^4.21.2",
-    "cors": "^2.8.5"
-  }
-}
-PKGJSON
+          echo '{"name":"playfool","version":"1.0.0","main":"index.html","node-main":"server.js","window":{"title":"PlayFool","width":1200,"height":800,"min_width":900,"min_height":600,"icon":"public/icon.png","toolbar":false,"frame":true},"dependencies":{"express":"^4.21.2","cors":"^2.8.5"}}' > "$RESOURCES/package.json"
 
-          # Install server dependencies
           cd "$RESOURCES"
           npm install --omit=dev
           cd -
 
-          # Update app name in Info.plist
           PLIST="$APP/PlayFool.app/Contents/Info.plist"
           if [ -f "$PLIST" ]; then
             /usr/libexec/PlistBuddy -c "Set :CFBundleName PlayFool" "$PLIST" 2>/dev/null || true
             /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName PlayFool" "$PLIST" 2>/dev/null || true
           fi
 
-          # Zip it
           cd "$APP"
           zip -r -q "../PlayFool-macOS.zip" "PlayFool.app"
           cd ..
@@ -263,8 +254,7 @@ PKGJSON
             **Windows:** Extract zip → Run `PlayFool.exe`
             **macOS:** Extract zip → Move `PlayFool.app` to Applications → Open
 
-            ### Requirements
-            - Python with yt-dlp installed (`pip install yt-dlp`)
+            **No additional software required!** yt-dlp and ffmpeg are bundled.
 
             ### Features
             - YouTube search, preview (video + audio), and download
