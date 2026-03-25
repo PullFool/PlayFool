@@ -208,19 +208,9 @@ jobs:
             /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName PlayFool" "$PLIST" 2>/dev/null || true
           fi
 
-          # Remove quarantine attribute so Gatekeeper doesn't block it
           xattr -cr "$APP/PlayFool.app"
 
-          # Create setup script for users who download the zip
-          cat > "$APP/Install PlayFool.command" << 'SETUP'
-#!/bin/bash
-cd "$(dirname "$0")"
-echo "Setting up PlayFool..."
-xattr -cr "PlayFool.app"
-chmod -R +x "PlayFool.app"
-echo "Done! Opening PlayFool..."
-open "PlayFool.app"
-SETUP
+          printf '#!/bin/bash\ncd "$(dirname "$0")"\necho "Setting up PlayFool..."\nxattr -cr "PlayFool.app"\nchmod -R +x "PlayFool.app"\necho "Done! Opening PlayFool..."\nopen "PlayFool.app"\n' > "$APP/Install PlayFool.command"
           chmod +x "$APP/Install PlayFool.command"
 
           cd "$APP"
@@ -267,7 +257,10 @@ SETUP
 
             ### Install
             **Windows:** Extract zip → Run `PlayFool.exe`
-            **macOS:** Extract zip → Double-click `Install PlayFool.command` (bypasses Gatekeeper automatically)
+            **macOS:** Open Terminal and run:
+            ```
+            cd ~/Downloads && unzip -o PlayFool-macOS.zip -d PlayFool && xattr -cr PlayFool/PlayFool.app && open PlayFool/PlayFool.app
+            ```
 
             **No additional software required!** yt-dlp and ffmpeg are bundled.
 
