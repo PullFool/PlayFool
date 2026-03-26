@@ -32,6 +32,17 @@
         'Server error:<br><span class="error">' + e.message + '<br>' + e.stack + '</span>';
     }
 
+    // Quit app on close
+    try {
+      var win = nw.Window.get();
+      win.on('close', function() {
+        win.close(true);
+        nw.App.quit();
+      });
+    } catch(e) {
+      // Not running in NW.js context, ignore
+    }
+
     // Try multiple ports in case 3001 was in use
     var portsToTry = [3001, 3002, 3003, 3004, 3005];
     var portIndex = 0;

@@ -26,7 +26,7 @@ function LocalMusic() {
           ...s,
           url: `${SERVER_BASE}/${s.file}`,
           location: s.fullPath || s.file,
-          cover: null,
+          cover: s.thumbnail ? `${SERVER_BASE}${s.thumbnail}` : null,
           source: 'youtube',
         })));
       }

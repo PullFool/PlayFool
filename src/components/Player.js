@@ -1,9 +1,9 @@
 import React, { useRef, useCallback } from 'react';
 import { usePlayer } from '../context/PlayerContext';
-import { IoPlay, IoPause, IoPlaySkipForward, IoPlaySkipBack, IoVolumeHigh, IoVolumeMute, IoMusicalNotes, IoDocumentText, IoVideocam } from 'react-icons/io5';
+import { IoPlay, IoPause, IoPlaySkipForward, IoPlaySkipBack, IoVolumeHigh, IoVolumeMute, IoMusicalNotes, IoDocumentText, IoVideocam, IoOptions } from 'react-icons/io5';
 import styles from './Player.module.css';
 
-function Player({ showLyrics, onToggleLyrics }) {
+function Player({ showLyrics, onToggleLyrics, showEqualizer, onToggleEqualizer }) {
   const {
     currentSong, isPlaying, currentTime, duration, volume,
     togglePlayPause, skipNext, skipPrev, seekTo, setVolumeLevel,
@@ -80,6 +80,13 @@ function Player({ showLyrics, onToggleLyrics }) {
               <IoDocumentText />
             </button>
           )}
+          <button
+            className={`${styles.lyricsBtn} ${showEqualizer ? styles.lyricsBtnActive : ''}`}
+            onClick={onToggleEqualizer}
+            title="Equalizer"
+          >
+            <IoOptions />
+          </button>
           <span className={styles.time}>{formatTime(currentTime)} / {formatTime(duration)}</span>
           <div className={styles.volume}>
             <button className={styles.volumeBtn} onClick={() => setVolumeLevel(volume > 0 ? 0 : 0.8)}>

@@ -37,3 +37,8 @@
 }
 
 .playing { color: var(--green); }
+
+.dragOver {
+  border-top: 2px solid var(--green);
+  background: rgba(29, 185, 84, 0.1);
+}

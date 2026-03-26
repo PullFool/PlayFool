@@ -23,9 +23,11 @@ const downloadsDir = path.join(os.homedir(), 'Music', 'PlayFool');
 const videosDir = path.join(os.homedir(), 'Videos', 'PlayFool');
 const appDataDir = path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'PlayFool');
 const lyricsDir = path.join(appDataDir, 'lyrics');
+const thumbnailsDir = path.join(appDataDir, 'thumbnails');
 if (!fs.existsSync(downloadsDir)) fs.mkdirSync(downloadsDir, { recursive: true });
 if (!fs.existsSync(videosDir)) fs.mkdirSync(videosDir, { recursive: true });
 if (!fs.existsSync(lyricsDir)) fs.mkdirSync(lyricsDir, { recursive: true });
+if (!fs.existsSync(thumbnailsDir)) fs.mkdirSync(thumbnailsDir, { recursive: true });
 
 // Serve downloaded files with proper MIME types
 const MIME_TYPES = {
@@ -276,6 +278,12 @@ app.post('/api/download', async (req, res) => {
   // Fetch and save lyrics in background (don't block the response)
   fetchAndSaveLyrics(finalTitle, file).catch(() => {});
 
+  // Save thumbnail in background if URL provided
+  const thumbnail = req.body.thumbnail;
+  if (thumbnail) {
+    saveThumbnail(path.basename(file, ext), thumbnail).catch(() => {});
+  }
+
   res.json({
     success: true,
     title: finalTitle,
@@ -296,15 +304,21 @@ app.get('/api/library', (req, res) => {
     })
     .sort((a, b) => b.mtime - a.mtime);
 
-  const songs = files.map(f => ({
-    id: 'dl-' + crypto.createHash('md5').update(f.name).digest('hex'),
-    title: path.basename(f.name, path.extname(f.name)).replace(/_/g, ' '),
-    artist: 'PlayFool',
-    file: `downloads/${f.name}`,
-    fullPath: path.join(downloadsDir, f.name),
-    size: f.size,
-    date: new Date(f.mtime).toISOString().replace('T', ' ').substring(0, 16),
-  }));
+  const songs = files.map(f => {
+    const basename = path.basename(f.name, path.extname(f.name));
+    const thumbPath = path.join(thumbnailsDir, basename + '.jpg');
+    const hasThumbnail = fs.existsSync(thumbPath);
+    return {
+      id: 'dl-' + crypto.createHash('md5').update(f.name).digest('hex'),
+      title: basename.replace(/_/g, ' '),
+      artist: 'PlayFool',
+      file: `downloads/${f.name}`,
+      fullPath: path.join(downloadsDir, f.name),
+      thumbnail: hasThumbnail ? `/thumbnails/${basename}.jpg` : null,
+      size: f.size,
+      date: new Date(f.mtime).toISOString().replace('T', ' ').substring(0, 16),
+    };
+  });
 
   res.json({ songs });
 });
@@ -460,6 +474,47 @@ app.get('/api/videos', (req, res) => {
   }));
 
   res.json({ videos });
+});
+
+// --- Thumbnails ---
+
+async function saveThumbnail(basename, url) {
+  const thumbPath = path.join(thumbnailsDir, basename + '.jpg');
+  if (fs.existsSync(thumbPath)) return;
+
+  try {
+    await new Promise((resolve, reject) => {
+      const client = url.startsWith('https') ? https : http;
+      client.get(url, { timeout: 10000 }, (res) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          saveThumbnail(basename, res.headers.location).then(resolve).catch(reject);
+          return;
+        }
+        if (res.statusCode !== 200) { reject(); return; }
+        const file = fs.createWriteStream(thumbPath);
+        res.pipe(file);
+        file.on('finish', () => { file.close(); resolve(); });
+      }).on('error', reject);
+    });
+  } catch (e) { /* silently fail */ }
+}
+
+// Serve thumbnails
+app.use('/thumbnails', express.static(thumbnailsDir));
+
+app.get('/api/thumbnail', (req, res) => {
+  const file = (req.query.file || '').trim();
+  if (!file) return res.status(400).send('No file');
+
+  const basename = path.basename(file, path.extname(file));
+  const thumbPath = path.join(thumbnailsDir, basename + '.jpg');
+
+  if (fs.existsSync(thumbPath)) {
+    res.setHeader('Content-Type', 'image/jpeg');
+    fs.createReadStream(thumbPath).pipe(res);
+  } else {
+    res.status(404).send('No thumbnail');
+  }
 });
 
 // --- Lyrics ---

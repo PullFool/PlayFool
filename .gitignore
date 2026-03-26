@@ -7,3 +7,4 @@ nw-data/
 *.log
 package-test.json
 test-electron.js
+test-dist/
