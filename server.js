@@ -29,6 +29,10 @@ if (!fs.existsSync(videosDir)) fs.mkdirSync(videosDir, { recursive: true });
 if (!fs.existsSync(lyricsDir)) fs.mkdirSync(lyricsDir, { recursive: true });
 if (!fs.existsSync(thumbnailsDir)) fs.mkdirSync(thumbnailsDir, { recursive: true });
 
+// Cache files for scan results
+const musicCachePath = path.join(appDataDir, 'scan_music.json');
+const videoCachePath = path.join(appDataDir, 'scan_videos.json');
+
 // Serve downloaded files with proper MIME types
 const MIME_TYPES = {
   '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.ogg': 'audio/ogg',
@@ -451,8 +455,50 @@ app.post('/api/video/download', async (req, res) => {
   });
 });
 
+// Generate video thumbnail using ffmpeg
+async function generateVideoThumbnail(videoPath, basename) {
+  const safeBasename = basename.replace(/[<>:"/\\|?*]/g, '');
+  const thumbPath = path.join(thumbnailsDir, 'vid_' + safeBasename + '.jpg');
+  if (fs.existsSync(thumbPath)) return thumbPath;
+
+  // Find ffmpeg executable directly
+  const isWin = process.platform === 'win32';
+  const ffmpegName = isWin ? 'ffmpeg.exe' : 'ffmpeg';
+  const candidates = [
+    path.join(__dirname, 'ffmpeg', ffmpegName),
+    path.join(__dirname, 'bin', ffmpegName),
+  ];
+  if (isWin) candidates.push('C:\\ffmpeg\\bin\\ffmpeg.exe');
+  else candidates.push('/usr/local/bin/ffmpeg', '/opt/homebrew/bin/ffmpeg', '/usr/bin/ffmpeg');
+
+  let ffmpegExe = 'ffmpeg';
+  for (const c of candidates) {
+    if (fs.existsSync(c)) { ffmpegExe = c; break; }
+  }
+
+  return new Promise((resolve) => {
+    execFile(ffmpegExe, [
+      '-i', videoPath,
+      '-ss', '00:00:03',
+      '-vframes', '1',
+      '-vf', 'scale=320:-1',
+      '-update', '1',
+      '-y',
+      thumbPath,
+    ], { timeout: 15000, windowsHide: true }, (err) => {
+      if (fs.existsSync(thumbPath)) {
+        console.log('Thumbnail generated:', thumbPath);
+        resolve(thumbPath);
+      } else {
+        console.error('Thumbnail failed:', videoPath, err?.message);
+        resolve(null);
+      }
+    });
+  });
+}
+
 // API: Get video library
-app.get('/api/videos', (req, res) => {
+app.get('/api/videos', async (req, res) => {
   if (!fs.existsSync(videosDir)) return res.json({ videos: [] });
 
   const files = fs.readdirSync(videosDir)
@@ -464,14 +510,28 @@ app.get('/api/videos', (req, res) => {
     })
     .sort((a, b) => b.mtime - a.mtime);
 
-  const videos = files.map(f => ({
-    id: 'vid-' + crypto.createHash('md5').update(f.name).digest('hex'),
-    title: path.basename(f.name, path.extname(f.name)).replace(/_/g, ' '),
-    file: `videos/${f.name}`,
-    fullPath: path.join(videosDir, f.name),
-    size: f.size,
-    date: new Date(f.mtime).toISOString().replace('T', ' ').substring(0, 16),
-  }));
+  const videos = [];
+  for (const f of files) {
+    const basename = path.basename(f.name, path.extname(f.name));
+    const fullPath = path.join(videosDir, f.name);
+    const thumbKey = 'vid_' + basename;
+    const thumbExists = fs.existsSync(path.join(thumbnailsDir, thumbKey + '.jpg'));
+
+    // Generate thumbnail in background if not exists
+    if (!thumbExists) {
+      generateVideoThumbnail(fullPath, basename).catch(() => {});
+    }
+
+    videos.push({
+      id: 'vid-' + crypto.createHash('md5').update(f.name).digest('hex'),
+      title: basename.replace(/_/g, ' '),
+      file: `videos/${f.name}`,
+      fullPath: fullPath,
+      thumbnail: thumbExists ? `/thumbnails/${thumbKey}.jpg` : null,
+      size: f.size,
+      date: new Date(f.mtime).toISOString().replace('T', ' ').substring(0, 16),
+    });
+  }
 
   res.json({ videos });
 });
@@ -515,6 +575,20 @@ app.get('/api/thumbnail', (req, res) => {
   } else {
     res.status(404).send('No thumbnail');
   }
+});
+
+// API: Generate video thumbnails on demand
+app.post('/api/videos/thumbnails', async (req, res) => {
+  if (!fs.existsSync(videosDir)) return res.json({ generated: 0 });
+  const videoExts = /\.(mp4|mkv|webm|avi|mov)$/i;
+  const files = fs.readdirSync(videosDir).filter(f => videoExts.test(f));
+  let generated = 0;
+  for (const f of files) {
+    const basename = path.basename(f, path.extname(f));
+    const result = await generateVideoThumbnail(path.join(videosDir, f), basename);
+    if (result) generated++;
+  }
+  res.json({ generated });
 });
 
 // --- Lyrics ---
@@ -753,7 +827,40 @@ app.get('/api/scan', async (req, res) => {
   // Sort by modification date, newest first
   allSongs.sort((a, b) => b.date.localeCompare(a.date));
 
+  // Save to cache
+  try { fs.writeFileSync(musicCachePath, JSON.stringify(allSongs), 'utf-8'); } catch(e) {}
+
   res.json({ songs: allSongs });
+});
+
+// API: Get cached scan results (no rescan)
+app.get('/api/scan/cached', (req, res) => {
+  if (fs.existsSync(musicCachePath)) {
+    try {
+      const cached = JSON.parse(fs.readFileSync(musicCachePath, 'utf-8'));
+      // Verify files still exist
+      const valid = cached.filter(s => fs.existsSync(s.fullPath));
+      return res.json({ songs: valid });
+    } catch(e) {}
+  }
+  res.json({ songs: [] });
+});
+
+// API: Remove item from scan cache
+app.post('/api/scan/remove', (req, res) => {
+  const { id, type } = req.body;
+  if (!id) return res.json({ error: 'No id' });
+
+  const cachePath = type === 'video' ? videoCachePath : musicCachePath;
+  if (fs.existsSync(cachePath)) {
+    try {
+      const cached = JSON.parse(fs.readFileSync(cachePath, 'utf-8'));
+      const updated = cached.filter(item => item.id !== id);
+      fs.writeFileSync(cachePath, JSON.stringify(updated), 'utf-8');
+      return res.json({ success: true, remaining: updated.length });
+    } catch(e) {}
+  }
+  res.json({ success: true });
 });
 
 // Serve scanned local files
@@ -836,7 +943,41 @@ app.get('/api/scan/videos', async (req, res) => {
   }
 
   allVideos.sort((a, b) => b.date.localeCompare(a.date));
+
+  // Generate thumbnails for scanned videos in background
+  for (const v of allVideos) {
+    const basename = v.title.replace(/[<>:"/\\|?*]/g, '');
+    const thumbKey = 'vid_' + basename;
+    if (!fs.existsSync(path.join(thumbnailsDir, thumbKey + '.jpg'))) {
+      generateVideoThumbnail(v.fullPath, basename).catch(() => {});
+    }
+    v.thumbnail = fs.existsSync(path.join(thumbnailsDir, thumbKey + '.jpg'))
+      ? `/thumbnails/${thumbKey}.jpg` : null;
+  }
+
+  // Save to cache
+  try { fs.writeFileSync(videoCachePath, JSON.stringify(allVideos), 'utf-8'); } catch(e) {}
+
   res.json({ videos: allVideos });
+});
+
+// API: Get cached video scan results
+app.get('/api/scan/videos/cached', (req, res) => {
+  if (fs.existsSync(videoCachePath)) {
+    try {
+      const cached = JSON.parse(fs.readFileSync(videoCachePath, 'utf-8'));
+      const valid = cached.filter(v => fs.existsSync(v.fullPath)).map(v => {
+        // Check if thumbnail was generated since last cache
+        const basename = v.title.replace(/[<>:"/\\|?*]/g, '');
+        const thumbKey = 'vid_' + basename;
+        const thumbPath = path.join(thumbnailsDir, thumbKey + '.jpg');
+        v.thumbnail = fs.existsSync(thumbPath) ? `/thumbnails/${thumbKey}.jpg` : null;
+        return v;
+      });
+      return res.json({ videos: valid });
+    } catch(e) {}
+  }
+  res.json({ videos: [] });
 });
 
 // Serve scanned local video files
@@ -858,6 +999,130 @@ app.get('/api/localvideo', (req, res) => {
   res.setHeader('Content-Type', mimeMap[ext] || 'video/mp4');
   res.setHeader('Accept-Ranges', 'bytes');
   fs.createReadStream(resolved).pipe(res);
+});
+
+// API: Toggle mini player mode
+let isMiniMode = false;
+app.post('/api/mini-toggle', (req, res) => {
+  try {
+    if (typeof nw !== 'undefined') {
+      const win = nw.Window.get();
+      isMiniMode = !isMiniMode;
+      if (isMiniMode) {
+        win.setMinimumSize(380, 70);
+        win.resizeTo(400, 70);
+        win.setAlwaysOnTop(true);
+      } else {
+        win.setMinimumSize(900, 600);
+        win.resizeTo(1200, 800);
+        win.setAlwaysOnTop(false);
+      }
+      res.json({ mini: isMiniMode });
+    } else {
+      res.json({ error: 'Not running in NW.js', mini: false });
+    }
+  } catch (e) {
+    res.json({ error: e.message, mini: false });
+  }
+});
+
+// --- Auto-Update ---
+const updateDir = path.join(appDataDir, 'updates');
+if (!fs.existsSync(updateDir)) fs.mkdirSync(updateDir, { recursive: true });
+
+let updateProgress = { percent: 0, done: false, error: null };
+
+app.post('/api/update/download', async (req, res) => {
+  const { url, fileName } = req.body;
+  if (!url || !fileName) return res.json({ error: 'Missing url or fileName' });
+
+  updateProgress = { percent: 0, done: false, error: null };
+  const filePath = path.join(updateDir, fileName);
+
+  try {
+    await new Promise((resolve, reject) => {
+      const download = (downloadUrl) => {
+        const client = downloadUrl.startsWith('https') ? https : http;
+        client.get(downloadUrl, { headers: { 'User-Agent': 'PlayFool-Updater' } }, (response) => {
+          // Handle redirects
+          if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+            download(response.headers.location);
+            return;
+          }
+          if (response.statusCode !== 200) {
+            updateProgress.error = `HTTP ${response.statusCode}`;
+            reject(new Error(`HTTP ${response.statusCode}`));
+            return;
+          }
+
+          const totalSize = parseInt(response.headers['content-length'], 10) || 0;
+          let downloaded = 0;
+          const file = fs.createWriteStream(filePath);
+
+          response.on('data', (chunk) => {
+            downloaded += chunk.length;
+            if (totalSize > 0) {
+              updateProgress.percent = Math.round((downloaded / totalSize) * 100);
+            }
+          });
+
+          response.pipe(file);
+          file.on('finish', () => {
+            file.close();
+            updateProgress.percent = 100;
+            updateProgress.done = true;
+            resolve();
+          });
+
+          file.on('error', (err) => {
+            fs.unlinkSync(filePath);
+            updateProgress.error = err.message;
+            reject(err);
+          });
+        }).on('error', (err) => {
+          updateProgress.error = err.message;
+          reject(err);
+        });
+      };
+
+      download(url);
+    });
+
+    res.json({ success: true, path: filePath });
+  } catch (e) {
+    updateProgress.error = e.message;
+    res.json({ error: e.message });
+  }
+});
+
+app.get('/api/update/progress', (req, res) => {
+  res.json(updateProgress);
+});
+
+app.post('/api/update/install', (req, res) => {
+  // Find the downloaded installer
+  const files = fs.readdirSync(updateDir).filter(f => f.endsWith('.exe'));
+  if (files.length === 0) return res.json({ error: 'No installer found' });
+
+  const installerPath = path.join(updateDir, files[files.length - 1]);
+  res.json({ success: true, installing: true });
+
+  // Run installer silently and quit app
+  setTimeout(() => {
+    const { spawn } = require('child_process');
+    spawn(installerPath, ['/SILENT', '/SUPPRESSMSGBOXES', '/NORESTART'], {
+      detached: true,
+      stdio: 'ignore',
+    }).unref();
+
+    // Quit app after launching installer
+    setTimeout(() => {
+      if (typeof nw !== 'undefined') {
+        nw.App.quit();
+      }
+      process.exit(0);
+    }, 1000);
+  }, 500);
 });
 
 // Catch-all: serve React app for client-side routing

@@ -19,9 +19,11 @@ export function AudioProvider({ children }) {
   const [downloadProgress, setDownloadProgress] = useState(null);
   const [mediaType, setMediaType] = useState('audio'); // 'audio' or 'video'
   const [showVideoPlayer, setShowVideoPlayer] = useState(false);
+  const [queue, setQueue] = useState([]); // manual queue (Play Next / Add to Queue)
 
   const audioRef = useRef(new Audio());
   const videoRef = useRef(null);
+  const skipNextRef = useRef(null);
   const currentSong = currentIndex >= 0 ? songs[currentIndex] : null;
 
   // Get active media element (audio or video)
@@ -38,7 +40,7 @@ export function AudioProvider({ children }) {
     const onDurationChange = () => setDuration(audio.duration || 0);
     const onEnded = () => {
       if (repeat === 2) { audio.currentTime = 0; audio.play(); }
-      else skipNext();
+      else if (skipNextRef.current) skipNextRef.current();
     };
     const onPlay = () => setIsPlaying(true);
     const onPause = () => setIsPlaying(false);
@@ -72,7 +74,7 @@ export function AudioProvider({ children }) {
     videoEl.ondurationchange = () => setDuration(videoEl.duration || 0);
     videoEl.onended = () => {
       if (repeat === 2) { videoEl.currentTime = 0; videoEl.play(); }
-      else skipNext();
+      else if (skipNextRef.current) skipNextRef.current();
     };
     videoEl.onplay = () => setIsPlaying(true);
     videoEl.onpause = () => setIsPlaying(false);
@@ -119,6 +121,15 @@ export function AudioProvider({ children }) {
   }, [isPlaying, mediaType]);
 
   const skipNext = useCallback(() => {
+    // If there are songs in the manual queue, play from there first
+    if (queue.length > 0) {
+      const nextSong = queue[0];
+      setQueue(prev => prev.slice(1));
+      // Play the queued song as a single-song list inserted into context
+      playSong([nextSong], 0);
+      return;
+    }
+
     if (songs.length === 0) return;
     let next;
     if (shuffle) {
@@ -132,7 +143,10 @@ export function AudioProvider({ children }) {
       }
     }
     playSong(songs, next);
-  }, [songs, currentIndex, shuffle, repeat, mediaType, playSong]);
+  }, [songs, currentIndex, shuffle, repeat, mediaType, playSong, queue]);
+
+  // Keep ref updated so onEnded always calls the latest skipNext
+  useEffect(() => { skipNextRef.current = skipNext; }, [skipNext]);
 
   const skipPrev = useCallback(() => {
     if (songs.length === 0) return;
@@ -156,10 +170,40 @@ export function AudioProvider({ children }) {
   const toggleShuffle = useCallback(() => setShuffle(s => !s), []);
   const toggleRepeat = useCallback(() => setRepeat(r => (r + 1) % 3), []);
 
+  // Queue management
+  const addToQueue = useCallback((song) => {
+    setQueue(prev => [...prev, song]);
+  }, []);
+
+  const playNext = useCallback((song) => {
+    setQueue(prev => [song, ...prev]);
+  }, []);
+
+  const removeFromQueue = useCallback((index) => {
+    setQueue(prev => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const reorderQueue = useCallback((fromIndex, toIndex) => {
+    setQueue(prev => {
+      const items = [...prev];
+      const [moved] = items.splice(fromIndex, 1);
+      items.splice(toIndex, 0, moved);
+      return items;
+    });
+  }, []);
+
+  const playFromQueue = useCallback((index) => {
+    const song = queue[index];
+    if (!song) return;
+    setQueue(prev => prev.filter((_, i) => i !== index));
+    playSong([song], 0);
+  }, [queue, playSong]);
+
   const value = {
     songs, currentSong, currentIndex, isPlaying, currentTime, duration,
     volume, shuffle, repeat, showNowPlaying, downloadProgress,
     mediaType, showVideoPlayer, videoRef, bindVideoEvents,
+    queue, addToQueue, playNext, removeFromQueue, reorderQueue, playFromQueue,
     playSong, shufflePlay, togglePlayPause, skipNext, skipPrev, seekTo,
     setVolumeLevel, toggleShuffle, toggleRepeat,
     setShowNowPlaying, setShowVideoPlayer, setDownloadProgress, setSongs,

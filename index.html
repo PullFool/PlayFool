@@ -32,13 +32,30 @@
         'Server error:<br><span class="error">' + e.message + '<br>' + e.stack + '</span>';
     }
 
-    // Quit app on close
+    // Quit app on close and expose NW.js API globally
     try {
       var win = nw.Window.get();
       win.on('close', function() {
         win.close(true);
         nw.App.quit();
       });
+
+      // Expose mini player functions globally so React can call them
+      window.__playfool_mini = false;
+      window.__playfool_toggleMini = function() {
+        if (window.__playfool_mini) {
+          win.setMinimumSize(900, 600);
+          win.resizeTo(1200, 800);
+          win.setAlwaysOnTop(false);
+          window.__playfool_mini = false;
+        } else {
+          win.setMinimumSize(380, 70);
+          win.resizeTo(400, 70);
+          win.setAlwaysOnTop(true);
+          window.__playfool_mini = true;
+        }
+        return window.__playfool_mini;
+      };
     } catch(e) {
       // Not running in NW.js context, ignore
     }

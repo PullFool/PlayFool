@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import styles from './Tour.module.css';
 
-const APP_VERSION = '1.7.0';
+const APP_VERSION = '1.8.0';
 
 const welcomeSteps = [
   {
@@ -59,18 +59,28 @@ const welcomeSteps = [
 const updateSteps = [
   {
     title: `What's New in v${APP_VERSION}`,
-    description: 'PlayFool has been updated with new features and improvements!',
+    description: 'PlayFool has been updated with awesome new features!',
     icon: '🆕',
   },
   {
-    title: 'Keyboard Shortcuts',
-    description: 'Control playback without touching the mouse:\nSpace = Play/Pause\nCtrl+Arrows = Skip/Volume\nMedia keys supported!',
-    icon: '⌨️',
+    title: 'Dark / Light Theme',
+    description: 'Switch between dark and light mode! Click the sun/moon icon at the bottom of the sidebar.',
+    icon: '🌓',
   },
   {
-    title: 'System Tray',
-    description: 'PlayFool now minimizes to the system tray when you close the window. Right-click the tray icon for options. Ctrl+Q to fully quit.',
-    icon: '📌',
+    title: 'Mini Player',
+    description: 'Click the minimize icon in the player bar to shrink PlayFool into a small floating window that stays on top of other apps. Click again to expand.',
+    icon: '🔲',
+  },
+  {
+    title: 'Song Queue',
+    description: 'Build your own "Up Next" list! Hover over any song and click:\n⏭ Play Next - inserts after current song\n☰ Add to Queue - adds to the end\nClick the queue icon in the player bar to see and manage your queue.',
+    icon: '📋',
+  },
+  {
+    title: 'More Improvements',
+    description: 'Equalizer with presets\nSearch history\nDrag & drop playlist reorder\nDownload queue\nAlbum art thumbnails\nAuto-update checker',
+    icon: '✨',
   },
   {
     title: 'Enjoy the update!',

@@ -1,9 +1,18 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
-import { IoLogoYoutube, IoList, IoHome, IoVideocam } from 'react-icons/io5';
+import { IoLogoYoutube, IoList, IoHome, IoVideocam, IoSunny, IoMoon } from 'react-icons/io5';
 import styles from './Sidebar.module.css';
 
 function Sidebar() {
+  const [theme, setTheme] = useState(() => localStorage.getItem('playfool_theme') || 'dark');
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('playfool_theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => setTheme(t => t === 'dark' ? 'light' : 'dark');
+
   return (
     <aside className={styles.sidebar}>
       <div className={styles.logo}>
@@ -24,7 +33,15 @@ function Sidebar() {
           <IoList /> <span>Playlists</span>
         </NavLink>
       </nav>
-      <div className={styles.trademark}>Made by PullFool</div>
+      <div className={styles.bottom}>
+        <button className={styles.themeToggle} onClick={toggleTheme} title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}>
+          {theme === 'dark' ? <IoSunny /> : <IoMoon />}
+        </button>
+        <div className={styles.trademarkRow}>
+          <span className={styles.trademark}>Made by PullFool</span>
+          <span className={styles.version}>v1.8.0</span>
+        </div>
+      </div>
     </aside>
   );
 }

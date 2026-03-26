@@ -27,6 +27,16 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.cardThumbImg {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .cardPlayIcon {
@@ -64,6 +74,27 @@
   font-size: 11px;
   color: var(--text-secondary);
 }
+
+.card { position: relative; }
+
+.removeBtn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: rgba(0,0,0,0.7);
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 16px;
+  padding: 4px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  opacity: 0;
+  transition: all 0.2s;
+}
+.card:hover .removeBtn { opacity: 1; }
+.removeBtn:hover { color: #ff6b6b; background: rgba(0,0,0,0.9); }
 
 .cardLocation {
   font-size: 10px;

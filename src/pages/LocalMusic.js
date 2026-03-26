@@ -1,19 +1,30 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { usePlayer } from '../context/PlayerContext';
-import { IoCloudUpload, IoMusicalNotes, IoPlay, IoAdd, IoRefresh, IoShuffle, IoSearch } from 'react-icons/io5';
+import { IoCloudUpload, IoMusicalNotes, IoPlay, IoAdd, IoRefresh, IoShuffle, IoSearch, IoPlaySkipForward, IoList, IoClose } from 'react-icons/io5';
 import styles from './LocalMusic.module.css';
 
 const API_BASE = process.env.REACT_APP_API_URL;
 const SERVER_BASE = process.env.REACT_APP_SERVER_URL;
 
+// Persist state across navigation
+let savedDownloaded = [];
+let savedScanned = [];
+let savedDropped = [];
+let initialLoaded = false;
+
 function LocalMusic() {
-  const { playSong, shufflePlay, currentSong, isPlaying, playlists, addToPlaylist } = usePlayer();
-  const [droppedSongs, setDroppedSongs] = useState([]);
-  const [downloadedSongs, setDownloadedSongs] = useState([]);
-  const [scannedSongs, setScannedSongs] = useState([]);
+  const { playSong, shufflePlay, currentSong, isPlaying, playlists, addToPlaylist, playNext, addToQueue } = usePlayer();
+  const [droppedSongs, setDroppedSongs] = useState(savedDropped);
+  const [downloadedSongs, setDownloadedSongs] = useState(savedDownloaded);
+  const [scannedSongs, setScannedSongs] = useState(savedScanned);
   const [showPlaylistMenu, setShowPlaylistMenu] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!initialLoaded);
   const [scanning, setScanning] = useState(false);
+
+  // Save state when it changes
+  useEffect(() => { savedDownloaded = downloadedSongs; }, [downloadedSongs]);
+  useEffect(() => { savedScanned = scannedSongs; }, [scannedSongs]);
+  useEffect(() => { savedDropped = droppedSongs; }, [droppedSongs]);
   const fileInputRef = useRef();
 
   const loadLibrary = useCallback(async () => {
@@ -26,7 +37,7 @@ function LocalMusic() {
           ...s,
           url: `${SERVER_BASE}/${s.file}`,
           location: s.fullPath || s.file,
-          cover: s.thumbnail ? `${SERVER_BASE}${s.thumbnail}` : null,
+          cover: s.thumbnail ? `${SERVER_BASE}${encodeURI(s.thumbnail)}` : null,
           source: 'youtube',
         })));
       }
@@ -34,10 +45,33 @@ function LocalMusic() {
       console.error('Failed to load library:', e);
     } finally {
       setLoading(false);
+      initialLoaded = true;
     }
   }, []);
 
-  useEffect(() => { loadLibrary(); }, [loadLibrary]);
+  // Load library and cached scan on first mount
+  const loadCachedScan = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/scan/cached`);
+      const data = await res.json();
+      if (data.songs && data.songs.length > 0) {
+        setScannedSongs(data.songs.map(s => ({
+          ...s,
+          url: `${SERVER_BASE}/api/localfile?path=${encodeURIComponent(s.fullPath)}`,
+          location: s.fullPath,
+          cover: null,
+          source: 'scanned',
+        })));
+      }
+    } catch (e) {}
+  }, []);
+
+  useEffect(() => {
+    if (!initialLoaded) {
+      loadLibrary();
+      loadCachedScan();
+    }
+  }, [loadLibrary, loadCachedScan]);
 
   const handleScan = useCallback(async () => {
     setScanning(true);
@@ -168,6 +202,16 @@ function LocalMusic() {
                   )}
                 </div>
                 <div className={styles.addWrapper}>
+                  <button className="btn-icon btn-icon-muted" title="Play Next"
+                    onClick={(e) => { e.stopPropagation(); playNext(song); }}
+                  >
+                    <IoPlaySkipForward />
+                  </button>
+                  <button className="btn-icon btn-icon-muted" title="Add to Queue"
+                    onClick={(e) => { e.stopPropagation(); addToQueue(song); }}
+                  >
+                    <IoList />
+                  </button>
                   <button className="btn-icon btn-icon-muted" title="Add to playlist"
                     onClick={(e) => {
                       e.stopPropagation();
@@ -176,6 +220,24 @@ function LocalMusic() {
                   >
                     <IoAdd />
                   </button>
+                  {song.source === 'scanned' && (
+                    <button className="btn-icon btn-icon-muted" title="Remove from list"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setScannedSongs(prev => {
+                          const updated = prev.filter(s => s.id !== song.id);
+                          fetch(`${API_BASE}/scan/remove`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ id: song.id, type: 'music' }),
+                          }).catch(() => {});
+                          return updated;
+                        });
+                      }}
+                    >
+                      <IoClose />
+                    </button>
+                  )}
                   {showPlaylistMenu === song.id && (
                     <div className={styles.dropdown}>
                       {playlists.length === 0 ? (
