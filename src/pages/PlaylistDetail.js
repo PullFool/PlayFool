@@ -1,7 +1,7 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { usePlayer } from '../context/PlayerContext';
-import { IoArrowBack, IoPlay, IoMusicalNotes, IoTrash, IoAdd, IoCheckmark, IoSearch, IoShuffle } from 'react-icons/io5';
+import { IoArrowBack, IoPlay, IoMusicalNotes, IoTrash, IoAdd, IoCheckmark, IoSearch, IoShuffle, IoReorderThree } from 'react-icons/io5';
 import styles from './PlaylistDetail.module.css';
 
 const API_BASE = process.env.REACT_APP_API_URL;
@@ -10,11 +10,14 @@ const SERVER_BASE = process.env.REACT_APP_SERVER_URL;
 function PlaylistDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { playlists, playSong, shufflePlay, currentSong, isPlaying, removeFromPlaylist, addToPlaylist } = usePlayer();
+  const { playlists, playSong, shufflePlay, currentSong, isPlaying, removeFromPlaylist, addToPlaylist, reorderPlaylist } = usePlayer();
   const [showAddModal, setShowAddModal] = useState(false);
   const [librarySongs, setLibrarySongs] = useState([]);
   const [searchFilter, setSearchFilter] = useState('');
   const [loading, setLoading] = useState(false);
+  const [dragIndex, setDragIndex] = useState(null);
+  const [dragOverIndex, setDragOverIndex] = useState(null);
+  const dragRef = useRef(null);
 
   const playlist = playlists.find(p => p.id === Number(id));
 
@@ -82,11 +85,26 @@ function PlaylistDetail() {
         <ul className="song-list">
           {playlist.songs.map((song, index) => (
             <li key={song.url + index}
-              className={`song-item ${currentSong?.url === song.url ? 'active' : ''}`}
+              className={`song-item ${currentSong?.url === song.url ? 'active' : ''} ${dragOverIndex === index ? styles.dragOver : ''}`}
               onClick={() => playSong(playlist.songs, index)}
+              draggable
+              onDragStart={() => { setDragIndex(index); dragRef.current = index; }}
+              onDragOver={(e) => { e.preventDefault(); setDragOverIndex(index); }}
+              onDragLeave={() => setDragOverIndex(null)}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (dragRef.current !== null && dragRef.current !== index) {
+                  reorderPlaylist(playlist.id, dragRef.current, index);
+                }
+                setDragIndex(null);
+                setDragOverIndex(null);
+                dragRef.current = null;
+              }}
+              onDragEnd={() => { setDragIndex(null); setDragOverIndex(null); dragRef.current = null; }}
+              style={{ opacity: dragIndex === index ? 0.4 : 1 }}
             >
-              <span className="song-item-number">
-                {currentSong?.url === song.url && isPlaying ? <IoPlay className={styles.playing} /> : index + 1}
+              <span className="song-item-number" style={{ cursor: 'grab' }} title="Drag to reorder">
+                <IoReorderThree />
               </span>
               <div className="song-item-art">
                 {song.cover ? <img src={song.cover} alt="" /> : <IoMusicalNotes className="icon" />}

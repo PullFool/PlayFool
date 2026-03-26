@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { usePlayer } from '../context/PlayerContext';
-import { IoSearch, IoDownload, IoMusicalNotes, IoPlay, IoPause, IoShuffle, IoVideocam, IoClose } from 'react-icons/io5';
+import { IoSearch, IoDownload, IoMusicalNotes, IoPlay, IoPause, IoShuffle, IoVideocam, IoClose, IoTime, IoTrash } from 'react-icons/io5';
 import styles from './YouTube.module.css';
 
 const API_BASE = process.env.REACT_APP_API_URL;
@@ -20,23 +20,46 @@ function YouTube() {
   const [error, setError] = useState('');
   const [previewingId, setPreviewingId] = useState(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
+  const [downloadQueue, setDownloadQueue] = useState([]);
+  const [isDownloading, setIsDownloading] = useState(false);
   const [videoModal, setVideoModal] = useState(null);
   const [qualities, setQualities] = useState([]);
   const [selectedQuality, setSelectedQuality] = useState('720');
   const [loadingQualities, setLoadingQualities] = useState(false);
   const [previewQuality, setPreviewQuality] = useState('720');
+  const [searchHistory, setSearchHistory] = useState(() => {
+    const saved = localStorage.getItem('playfool_search_history');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [showHistory, setShowHistory] = useState(false);
 
   // Save state when it changes so it persists across navigation
   useEffect(() => { savedQuery = query; }, [query]);
   useEffect(() => { savedResults = results; }, [results]);
   useEffect(() => { savedDownloaded = downloadedSongs; }, [downloadedSongs]);
 
-  const search = async () => {
-    if (!query.trim()) return;
+  const addToHistory = (q) => {
+    const updated = [q, ...searchHistory.filter(h => h !== q)].slice(0, 10);
+    setSearchHistory(updated);
+    localStorage.setItem('playfool_search_history', JSON.stringify(updated));
+  };
+
+  const removeFromHistory = (q) => {
+    const updated = searchHistory.filter(h => h !== q);
+    setSearchHistory(updated);
+    localStorage.setItem('playfool_search_history', JSON.stringify(updated));
+  };
+
+  const search = async (searchQuery) => {
+    const q = (searchQuery || query).trim();
+    if (!q) return;
+    setQuery(q);
+    setShowHistory(false);
     setSearching(true);
     setError('');
+    addToHistory(q);
     try {
-      const res = await fetch(`${API_BASE}/search?q=${encodeURIComponent(query)}`);
+      const res = await fetch(`${API_BASE}/search?q=${encodeURIComponent(q)}`);
       const data = await res.json();
       if (data.error) { setError(data.error); setResults([]); }
       else setResults(data.results || []);
@@ -47,28 +70,57 @@ function YouTube() {
     }
   };
 
-  const downloadMp3 = async (video) => {
-    setDownloadProgress({ title: video.title, percent: 0, status: 'Downloading MP3...' });
-    try {
-      const res = await fetch(`${API_BASE}/download`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: video.url, title: video.title }),
-      });
-      const data = await res.json();
-      if (data.error) setError(data.error);
-      else {
-        setDownloadedSongs(prev => [{
-          id: `yt-${Date.now()}`, title: data.title || video.title,
-          artist: video.channel || 'YouTube', url: `${SERVER_BASE}/${data.file}`,
-          cover: video.thumbnail, source: 'youtube',
-        }, ...prev]);
+  const queueDownload = (video, type = 'mp3', quality = null) => {
+    setDownloadQueue(prev => [...prev, { video, type, quality, id: Date.now() }]);
+  };
+
+  // Process download queue
+  useEffect(() => {
+    if (isDownloading || downloadQueue.length === 0) return;
+
+    const processNext = async () => {
+      setIsDownloading(true);
+      const item = downloadQueue[0];
+      const { video, type, quality } = item;
+
+      const label = type === 'mp4' ? `MP4 (${quality || 'best'}p)` : 'MP3';
+      setDownloadProgress({ title: video.title, percent: 0, status: `Downloading ${label}... (${downloadQueue.length} in queue)` });
+
+      try {
+        const endpoint = type === 'mp4' ? `${API_BASE}/video/download` : `${API_BASE}/download`;
+        const body = type === 'mp4'
+          ? { url: video.url, title: video.title, quality, thumbnail: video.thumbnail }
+          : { url: video.url, title: video.title, thumbnail: video.thumbnail };
+
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (data.error) setError(data.error);
+        else if (type === 'mp3') {
+          setDownloadedSongs(prev => [{
+            id: `yt-${Date.now()}`, title: data.title || video.title,
+            artist: video.channel || 'YouTube', url: `${SERVER_BASE}/${data.file}`,
+            cover: video.thumbnail, source: 'youtube',
+          }, ...prev]);
+        }
+      } catch (e) {
+        setError('Download failed: ' + e.message);
       }
-    } catch (e) {
-      setError('Download failed: ' + e.message);
-    } finally {
-      setDownloadProgress(null);
-    }
+
+      setDownloadQueue(prev => prev.slice(1));
+      setIsDownloading(false);
+      if (downloadQueue.length <= 1) setDownloadProgress(null);
+    };
+
+    processNext();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [downloadQueue, isDownloading]);
+
+  const downloadMp3 = (video) => {
+    queueDownload(video, 'mp3');
   };
 
   const openVideoDownload = async (video) => {
@@ -97,26 +149,10 @@ function YouTube() {
     }
   };
 
-  const downloadMp4 = async () => {
+  const downloadMp4 = () => {
     if (!videoModal) return;
+    queueDownload(videoModal, 'mp4', selectedQuality);
     setVideoModal(null);
-    setDownloadProgress({ title: videoModal.title, percent: 0, status: `Downloading MP4 (${selectedQuality}p)...` });
-    try {
-      const res = await fetch(`${API_BASE}/video/download`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          url: videoModal.url, title: videoModal.title, quality: selectedQuality,
-        }),
-      });
-      const data = await res.json();
-      if (data.error) setError(data.error);
-      else setError('');
-    } catch (e) {
-      setError('Video download failed: ' + e.message);
-    } finally {
-      setDownloadProgress(null);
-    }
   };
 
   const togglePreview = async (video) => {
@@ -160,13 +196,28 @@ function YouTube() {
 
       <h1 className="page-title">YouTube</h1>
 
-      <div className="search-bar">
+      <div className="search-bar" style={{ position: 'relative' }}>
         <input type="text" value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && search()}
+          onFocus={() => searchHistory.length > 0 && !query && setShowHistory(true)}
           placeholder="Search for music or videos..."
           className="search-input"
         />
+        {showHistory && searchHistory.length > 0 && (
+          <div className={styles.historyDropdown}>
+            {searchHistory.map((h, i) => (
+              <div key={i} className={styles.historyItem}>
+                <div className={styles.historyText} onClick={() => search(h)}>
+                  <IoTime /> <span>{h}</span>
+                </div>
+                <button className={styles.historyRemove} onClick={() => removeFromHistory(h)}>
+                  <IoTrash />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
         <select
           value={previewQuality}
           onChange={(e) => setPreviewQuality(e.target.value)}
@@ -223,10 +274,10 @@ function YouTube() {
                   </div>
 
                   <div className={styles.downloadBtns}>
-                    <button onClick={() => downloadMp3(video)} disabled={downloadProgress !== null} className="btn-sm btn-primary">
+                    <button onClick={() => downloadMp3(video)} className="btn-sm btn-primary">
                       <IoDownload /> MP3
                     </button>
-                    <button onClick={() => openVideoDownload(video)} disabled={downloadProgress !== null} className={`btn-sm ${styles.mp4Btn}`}>
+                    <button onClick={() => openVideoDownload(video)} className={`btn-sm ${styles.mp4Btn}`}>
                       <IoVideocam /> MP4
                     </button>
                   </div>

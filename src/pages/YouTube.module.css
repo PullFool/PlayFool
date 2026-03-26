@@ -116,3 +116,30 @@
 .loaderText {
   color: var(--green); font-size: 16px; font-weight: 600;
 }
+
+/* Search history dropdown */
+.historyDropdown {
+  position: absolute; top: 100%; left: 0; right: 120px;
+  background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: 8px; margin-top: 4px; z-index: 500;
+  max-height: 300px; overflow-y: auto;
+}
+
+.historyItem {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px; cursor: pointer; transition: background 0.2s;
+}
+.historyItem:hover { background: var(--bg-hover); }
+
+.historyText {
+  display: flex; align-items: center; gap: 8px;
+  color: var(--text-secondary); font-size: 13px; flex: 1;
+}
+.historyText:hover { color: var(--text-primary); }
+
+.historyRemove {
+  background: none; border: none; color: var(--text-muted);
+  cursor: pointer; padding: 4px; font-size: 14px;
+  display: flex; align-items: center;
+}
+.historyRemove:hover { color: #ff6b6b; }

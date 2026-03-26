@@ -45,8 +45,20 @@ export function PlaylistProvider({ children }) {
     setPlaylists(prev => prev.filter(p => p.id !== playlistId));
   }, []);
 
+  const reorderPlaylist = useCallback((playlistId, fromIndex, toIndex) => {
+    setPlaylists(prev => prev.map(p => {
+      if (p.id === playlistId) {
+        const songs = [...p.songs];
+        const [moved] = songs.splice(fromIndex, 1);
+        songs.splice(toIndex, 0, moved);
+        return { ...p, songs };
+      }
+      return p;
+    }));
+  }, []);
+
   const value = {
-    playlists, createPlaylist, addToPlaylist, removeFromPlaylist, deletePlaylist,
+    playlists, createPlaylist, addToPlaylist, removeFromPlaylist, deletePlaylist, reorderPlaylist,
   };
 
   return <PlaylistContext.Provider value={value}>{children}</PlaylistContext.Provider>;
