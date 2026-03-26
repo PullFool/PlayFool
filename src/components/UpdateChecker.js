@@ -8,6 +8,8 @@ const CHECK_INTERVAL = 24 * 60 * 60 * 1000; // Check once per day
 function UpdateChecker() {
   const [updateInfo, setUpdateInfo] = useState(null);
   const [dismissed, setDismissed] = useState(false);
+  const [downloadState, setDownloadState] = useState('idle'); // idle, downloading, ready, error
+  const [downloadProgress, setDownloadProgress] = useState(0);
 
   useEffect(() => {
     const lastCheck = localStorage.getItem('playfool_update_check');
@@ -26,19 +28,83 @@ function UpdateChecker() {
 
         const latestVersion = (data.tag_name || '').replace(/^v/, '');
         if (latestVersion && latestVersion !== APP_VERSION && isNewer(latestVersion, APP_VERSION)) {
+          // Find the setup exe in assets
+          const setupAsset = (data.assets || []).find(a =>
+            a.name.toLowerCase().includes('setup') && a.name.endsWith('.exe')
+          );
+
           setUpdateInfo({
             version: latestVersion,
             url: data.html_url,
             body: data.body || '',
+            downloadUrl: setupAsset ? setupAsset.browser_download_url : null,
+            fileName: setupAsset ? setupAsset.name : null,
           });
         }
       } catch (e) {
-        // Silently fail - no internet or API rate limited
+        // Silently fail
       }
     };
 
     checkForUpdate();
   }, []);
+
+  const handleAutoUpdate = async () => {
+    if (!updateInfo?.downloadUrl) {
+      // No setup exe found, fallback to opening browser
+      try { window.nw.Shell.openExternal(updateInfo.url); } catch(e) {
+        window.open(updateInfo.url, '_blank');
+      }
+      return;
+    }
+
+    setDownloadState('downloading');
+    setDownloadProgress(0);
+
+    try {
+      // Download via server (server has access to filesystem)
+      const res = await fetch('/api/update/download', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: updateInfo.downloadUrl, fileName: updateInfo.fileName }),
+      });
+
+      if (!res.ok) throw new Error('Download failed');
+
+      // Poll for download progress
+      const pollProgress = setInterval(async () => {
+        try {
+          const prog = await fetch('/api/update/progress');
+          const data = await prog.json();
+          setDownloadProgress(data.percent || 0);
+          if (data.done) {
+            clearInterval(pollProgress);
+            setDownloadState('ready');
+          }
+          if (data.error) {
+            clearInterval(pollProgress);
+            setDownloadState('error');
+          }
+        } catch(e) {}
+      }, 500);
+
+      const data = await res.json();
+      if (data.success) {
+        setDownloadState('ready');
+      } else {
+        setDownloadState('error');
+      }
+    } catch (e) {
+      setDownloadState('error');
+    }
+  };
+
+  const handleInstall = async () => {
+    try {
+      await fetch('/api/update/install', { method: 'POST' });
+      // App will close and restart after install
+    } catch(e) {}
+  };
 
   if (!updateInfo || dismissed) return null;
 
@@ -48,20 +114,45 @@ function UpdateChecker() {
         <strong>PlayFool v{updateInfo.version}</strong> is available!
         <span className={styles.current}>You have v{APP_VERSION}</span>
       </div>
+
       <div className={styles.actions}>
-        <a
-          href={updateInfo.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className={styles.updateBtn}
-          onClick={() => {
-            // Open in default browser for NW.js
-            try { window.nw.Shell.openExternal(updateInfo.url); } catch(e) {}
-          }}
-        >
-          Download
-        </a>
-        <button className={styles.dismissBtn} onClick={() => setDismissed(true)}>Later</button>
+        {downloadState === 'idle' && (
+          <>
+            <button className={styles.updateBtn} onClick={handleAutoUpdate}>
+              Update Now
+            </button>
+            <button className={styles.dismissBtn} onClick={() => setDismissed(true)}>Later</button>
+          </>
+        )}
+
+        {downloadState === 'downloading' && (
+          <div className={styles.progressWrap}>
+            <div className={styles.progressBar}>
+              <div className={styles.progressFill} style={{ width: `${downloadProgress}%` }} />
+            </div>
+            <span className={styles.progressText}>Downloading... {downloadProgress}%</span>
+          </div>
+        )}
+
+        {downloadState === 'ready' && (
+          <button className={styles.updateBtn} onClick={handleInstall}>
+            Restart & Install
+          </button>
+        )}
+
+        {downloadState === 'error' && (
+          <>
+            <span className={styles.errorText}>Download failed</span>
+            <button className={styles.updateBtn} onClick={() => {
+              try { window.nw.Shell.openExternal(updateInfo.url); } catch(e) {
+                window.open(updateInfo.url, '_blank');
+              }
+            }}>
+              Download Manually
+            </button>
+            <button className={styles.dismissBtn} onClick={() => setDismissed(true)}>Later</button>
+          </>
+        )}
       </div>
     </div>
   );

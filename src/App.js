@@ -10,6 +10,7 @@ import VideoPanel from './components/VideoPanel';
 import Tour from './components/Tour';
 import Equalizer from './components/Equalizer';
 import UpdateChecker from './components/UpdateChecker';
+import Queue from './components/Queue';
 import LocalMusic from './pages/LocalMusic';
 import YouTube from './pages/YouTube';
 import Videos from './pages/Videos';
@@ -80,6 +81,7 @@ function KeyboardShortcuts() {
 function App() {
   const [showLyrics, setShowLyrics] = useState(false);
   const [showEqualizer, setShowEqualizer] = useState(false);
+  const [showQueue, setShowQueue] = useState(false);
   const [tourDone, setTourDone] = useState(false);
 
   return (
@@ -102,12 +104,15 @@ function App() {
             </main>
             {showLyrics && <Lyrics onClose={() => setShowLyrics(false)} />}
             {showEqualizer && <Equalizer onClose={() => setShowEqualizer(false)} />}
+            {showQueue && <Queue onClose={() => setShowQueue(false)} />}
             <VideoPanel />
             <Player
               showLyrics={showLyrics}
               onToggleLyrics={() => setShowLyrics(prev => !prev)}
               showEqualizer={showEqualizer}
               onToggleEqualizer={() => setShowEqualizer(prev => !prev)}
+              showQueue={showQueue}
+              onToggleQueue={() => setShowQueue(prev => !prev)}
             />
             <NowPlaying />
           </div>

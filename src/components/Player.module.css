@@ -101,3 +101,50 @@
   width: 12px; height: 12px;
   background: var(--text-primary); border-radius: 50%; cursor: pointer;
 }
+
+/* Mini player overrides */
+:global(.app.mini-mode) .bar {
+  position: static;
+  height: 100vh;
+  border-top: none;
+  width: 100%;
+}
+
+:global(.app.mini-mode) .art { display: none; }
+:global(.app.mini-mode) .song { flex: 0 0 auto; order: -1; }
+:global(.app.mini-mode) .info {
+  position: absolute;
+  top: 4px;
+  left: 8px;
+  right: 8px;
+}
+:global(.app.mini-mode) .title {
+  font-size: 11px;
+  font-weight: 600;
+}
+:global(.app.mini-mode) .artist { display: none; }
+:global(.app.mini-mode) .inner {
+  padding: 22px 8px 4px;
+  height: auto;
+  gap: 8px;
+  width: 100%;
+  justify-content: center;
+}
+:global(.app.mini-mode) .controls { gap: 4px; order: 0; }
+:global(.app.mini-mode) .playBtn {
+  width: 30px; height: 30px; font-size: 14px;
+}
+:global(.app.mini-mode) .controlBtn {
+  font-size: 16px; padding: 4px;
+}
+:global(.app.mini-mode) .right { gap: 6px; order: 1; margin-left: auto; }
+:global(.app.mini-mode) .lyricsBtn { font-size: 14px; }
+:global(.app.mini-mode) .time { font-size: 10px; }
+:global(.app.mini-mode) .volumeSlider { display: none; }
+:global(.app.mini-mode) .volumeBtn { font-size: 14px; }
+:global(.app.mini-mode) .progressTop {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+}

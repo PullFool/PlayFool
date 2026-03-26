@@ -1,9 +1,9 @@
-import React, { useRef, useCallback } from 'react';
+import React, { useRef, useCallback, useState } from 'react';
 import { usePlayer } from '../context/PlayerContext';
-import { IoPlay, IoPause, IoPlaySkipForward, IoPlaySkipBack, IoVolumeHigh, IoVolumeMute, IoMusicalNotes, IoDocumentText, IoVideocam, IoOptions } from 'react-icons/io5';
+import { IoPlay, IoPause, IoPlaySkipForward, IoPlaySkipBack, IoVolumeHigh, IoVolumeMute, IoMusicalNotes, IoDocumentText, IoVideocam, IoOptions, IoContract, IoExpand, IoList } from 'react-icons/io5';
 import styles from './Player.module.css';
 
-function Player({ showLyrics, onToggleLyrics, showEqualizer, onToggleEqualizer }) {
+function Player({ showLyrics, onToggleLyrics, showEqualizer, onToggleEqualizer, showQueue, onToggleQueue }) {
   const {
     currentSong, isPlaying, currentTime, duration, volume,
     togglePlayPause, skipNext, skipPrev, seekTo, setVolumeLevel,
@@ -11,6 +11,7 @@ function Player({ showLyrics, onToggleLyrics, showEqualizer, onToggleEqualizer }
   } = usePlayer();
 
   const seekBarRef = useRef(null);
+  const [isMini, setIsMini] = useState(false);
 
   const formatTime = (t) => {
     if (!t || isNaN(t)) return '0:00';
@@ -86,6 +87,33 @@ function Player({ showLyrics, onToggleLyrics, showEqualizer, onToggleEqualizer }
             title="Equalizer"
           >
             <IoOptions />
+          </button>
+          <button
+            className={`${styles.lyricsBtn} ${showQueue ? styles.lyricsBtnActive : ''}`}
+            onClick={onToggleQueue}
+            title="Queue"
+          >
+            <IoList />
+          </button>
+          <button
+            className={styles.lyricsBtn}
+            onClick={async () => {
+              try {
+                const res = await fetch('/api/mini-toggle', { method: 'POST' });
+                const data = await res.json();
+                const appEl = document.querySelector('.app');
+                if (data.mini) {
+                  appEl?.classList.add('mini-mode');
+                  setIsMini(true);
+                } else {
+                  appEl?.classList.remove('mini-mode');
+                  setIsMini(false);
+                }
+              } catch(e) { console.error('Mini player error:', e); }
+            }}
+            title={isMini ? "Expand" : "Mini player"}
+          >
+            {isMini ? <IoExpand /> : <IoContract />}
           </button>
           <span className={styles.time}>{formatTime(currentTime)} / {formatTime(duration)}</span>
           <div className={styles.volume}>

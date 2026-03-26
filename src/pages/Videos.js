@@ -1,17 +1,26 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAudio } from '../context/PlayerContext';
-import { IoPlay, IoVideocam, IoRefresh, IoShuffle, IoSearch } from 'react-icons/io5';
+import { IoPlay, IoVideocam, IoRefresh, IoShuffle, IoSearch, IoClose } from 'react-icons/io5';
 import styles from './Videos.module.css';
 
 const API_BASE = process.env.REACT_APP_API_URL;
 const SERVER_BASE = process.env.REACT_APP_SERVER_URL;
 
+// Persist state across navigation
+let savedDownloadedVids = [];
+let savedScannedVids = [];
+let initialVidsLoaded = false;
+
 function Videos() {
   const { playSong, shufflePlay, currentSong, isPlaying } = useAudio();
-  const [downloadedVideos, setDownloadedVideos] = useState([]);
-  const [scannedVideos, setScannedVideos] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [downloadedVideos, setDownloadedVideos] = useState(savedDownloadedVids);
+  const [scannedVideos, setScannedVideos] = useState(savedScannedVids);
+  const [loading, setLoading] = useState(!initialVidsLoaded);
   const [scanning, setScanning] = useState(false);
+
+  // Save state when it changes
+  useEffect(() => { savedDownloadedVids = downloadedVideos; }, [downloadedVideos]);
+  useEffect(() => { savedScannedVids = scannedVideos; }, [scannedVideos]);
 
   const loadVideos = useCallback(async () => {
     setLoading(true);
@@ -23,6 +32,7 @@ function Videos() {
           ...v,
           url: `${SERVER_BASE}/${v.file}`,
           location: v.fullPath || v.file,
+          cover: v.thumbnail ? `${SERVER_BASE}${encodeURI(v.thumbnail)}` : null,
           type: 'video',
           artist: 'PlayFool',
         })));
@@ -31,6 +41,7 @@ function Videos() {
       console.error('Failed to load videos:', e);
     } finally {
       setLoading(false);
+      initialVidsLoaded = true;
     }
   }, []);
 
@@ -44,8 +55,10 @@ function Videos() {
           ...v,
           url: `${SERVER_BASE}/api/localvideo?path=${encodeURIComponent(v.fullPath)}`,
           location: v.fullPath,
+          cover: v.thumbnail ? `${SERVER_BASE}${encodeURI(v.thumbnail)}` : null,
           type: 'video',
           artist: 'Local',
+          source: 'scanned',
         })));
       }
     } catch (e) {
@@ -55,7 +68,30 @@ function Videos() {
     }
   }, []);
 
-  useEffect(() => { loadVideos(); }, [loadVideos]);
+  const loadCachedVideoScan = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/scan/videos/cached`);
+      const data = await res.json();
+      if (data.videos && data.videos.length > 0) {
+        setScannedVideos(data.videos.map(v => ({
+          ...v,
+          url: `${SERVER_BASE}/api/localvideo?path=${encodeURIComponent(v.fullPath)}`,
+          location: v.fullPath,
+          cover: v.thumbnail ? `${SERVER_BASE}${encodeURI(v.thumbnail)}` : null,
+          type: 'video',
+          artist: 'Local',
+          source: 'scanned',
+        })));
+      }
+    } catch (e) {}
+  }, []);
+
+  useEffect(() => {
+    if (!initialVidsLoaded) {
+      loadVideos();
+      loadCachedVideoScan();
+    }
+  }, [loadVideos, loadCachedVideoScan]);
 
   // Merge and deduplicate
   const seen = new Set();
@@ -113,6 +149,7 @@ function Videos() {
                 onClick={() => playSong(allVideos, index)}
               >
                 <div className={styles.cardThumb}>
+                  {video.cover && <img src={video.cover} alt="" className={styles.cardThumbImg} />}
                   {isActive && isPlaying ? (
                     <div className={styles.cardPlaying}>Playing</div>
                   ) : (
@@ -130,6 +167,24 @@ function Videos() {
                     </div>
                   )}
                 </div>
+                {video.source === 'scanned' && (
+                  <button className={styles.removeBtn} title="Remove from list"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setScannedVideos(prev => {
+                        const updated = prev.filter(v => v.id !== video.id);
+                        fetch(`${API_BASE}/scan/remove`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ id: video.id, type: 'video' }),
+                        }).catch(() => {});
+                        return updated;
+                      });
+                    }}
+                  >
+                    <IoClose />
+                  </button>
+                )}
               </div>
             );
           })}

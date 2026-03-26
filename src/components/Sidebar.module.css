@@ -25,6 +25,7 @@
   font-size: 28px;
 }
 
+
 .logoIcon {
   width: 32px;
   height: 32px;
@@ -64,12 +65,49 @@
   font-size: 22px;
 }
 
-.trademark {
+.bottom {
   position: absolute;
-  bottom: 16px;
+  bottom: 12px;
   left: 0;
   right: 0;
-  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.themeToggle {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 6px;
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+.themeToggle:hover { color: var(--green); border-color: var(--green); }
+
+.trademarkRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: 0 16px;
+}
+
+.trademark {
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+}
+
+.version {
   font-size: 10px;
   color: var(--text-muted);
   letter-spacing: 0.5px;
