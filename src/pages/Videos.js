@@ -31,6 +31,7 @@ function Videos() {
         setDownloadedVideos(data.videos.map(v => ({
           ...v,
           url: `${SERVER_BASE}/${v.file}`,
+          audioUrl: `${SERVER_BASE}/${v.file}`,
           location: v.fullPath || v.file,
           cover: v.thumbnail ? `${SERVER_BASE}${encodeURI(v.thumbnail)}` : null,
           type: 'video',
@@ -54,6 +55,7 @@ function Videos() {
         setScannedVideos(data.videos.map(v => ({
           ...v,
           url: `${SERVER_BASE}/api/localvideo?path=${encodeURIComponent(v.fullPath)}`,
+          audioUrl: `${SERVER_BASE}/api/localvideo?path=${encodeURIComponent(v.fullPath)}`,
           location: v.fullPath,
           cover: v.thumbnail ? `${SERVER_BASE}${encodeURI(v.thumbnail)}` : null,
           type: 'video',
@@ -76,6 +78,7 @@ function Videos() {
         setScannedVideos(data.videos.map(v => ({
           ...v,
           url: `${SERVER_BASE}/api/localvideo?path=${encodeURIComponent(v.fullPath)}`,
+          audioUrl: `${SERVER_BASE}/api/localvideo?path=${encodeURIComponent(v.fullPath)}`,
           location: v.fullPath,
           cover: v.thumbnail ? `${SERVER_BASE}${encodeURI(v.thumbnail)}` : null,
           type: 'video',

@@ -24,6 +24,7 @@ export function AudioProvider({ children }) {
   const audioRef = useRef(new Audio());
   const videoRef = useRef(null);
   const skipNextRef = useRef(null);
+  const mediaTypeRef = useRef('audio');
   const currentSong = currentIndex >= 0 ? songs[currentIndex] : null;
 
   // Get active media element (audio or video)
@@ -31,6 +32,23 @@ export function AudioProvider({ children }) {
     if (mediaType === 'video' && videoRef.current) return videoRef.current;
     return audioRef.current;
   }, [mediaType]);
+
+  // Prevent audio suspension on window focus change
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.hidden) {
+        // Re-play audio if it gets suspended when window loses focus
+        setTimeout(() => {
+          const audio = audioRef.current;
+          if (audio && audio.src && !audio.paused === false && isPlaying) {
+            audio.play().catch(() => {});
+          }
+        }, 100);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [isPlaying]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -88,23 +106,32 @@ export function AudioProvider({ children }) {
     if (!song) return;
 
     const isVideo = song.type === 'video';
-    setMediaType(isVideo ? 'video' : 'audio');
+    const newMediaType = isVideo ? 'video' : 'audio';
+    setMediaType(newMediaType);
+    mediaTypeRef.current = newMediaType;
     setShowVideoPlayer(isVideo);
 
-    // Always stop both audio and video before playing new content
-    audioRef.current.pause();
-    audioRef.current.src = '';
+    // Stop current playback without triggering state changes
+    try { audioRef.current.pause(); } catch(e) {}
+    audioRef.current.removeAttribute('src');
+    audioRef.current.load();
     if (videoRef.current) {
-      videoRef.current.pause();
-      videoRef.current.src = '';
+      try { videoRef.current.pause(); } catch(e) {}
     }
 
     if (!isVideo) {
+      // Audio-only: play directly
       audioRef.current.src = song.url;
       audioRef.current.load();
       audioRef.current.play().catch((err) => console.error('Play failed:', err.message));
+    } else if (song.source === 'preview') {
+      // YouTube preview: play audio through audioRef, video is muted visuals
+      const audioSrc = song.audioUrl || song.url;
+      audioRef.current.src = audioSrc;
+      audioRef.current.load();
+      audioRef.current.play().catch((err) => console.error('Play failed:', err.message));
     }
-    // Video element will be rendered by VideoPanel and bound via bindVideoEvents
+    // Local video: VideoPanel handles both video AND audio via bindVideoEvents
   }, []);
 
   const shufflePlay = useCallback((songList) => {

@@ -222,6 +222,23 @@ body {
 .app.mini-mode [class*="Lyrics"],
 .app.mini-mode [class*="Queue"],
 .app.mini-mode [class*="Equalizer"],
-.app.mini-mode [class*="VideoPanel"],
 .app.mini-mode [class*="NowPlaying"],
 .app.mini-mode [class*="UpdateChecker"] { display: none !important; }
+
+/* Mini mode layout: stack vertically */
+.app.mini-mode { flex-direction: column !important; }
+
+/* Show video panel as top section in mini mode */
+.app.mini-mode [class*="VideoPanel_panel"] {
+  position: static !important;
+  width: 100% !important;
+  height: 230px !important;
+  border: none !important;
+  border-bottom: 1px solid var(--border) !important;
+  transform: none !important;
+  z-index: 300 !important;
+  order: -1 !important;
+}
+.app.mini-mode [class*="VideoPanel_header"] { display: none !important; }
+.app.mini-mode [class*="VideoPanel_info"] { display: none !important; }
+.app.mini-mode [class*="VideoPanel_resizeHandle"] { display: none !important; }

@@ -99,7 +99,16 @@ function Player({ showLyrics, onToggleLyrics, showEqualizer, onToggleEqualizer, 
             className={styles.lyricsBtn}
             onClick={async () => {
               try {
-                const res = await fetch('/api/mini-toggle', { method: 'POST' });
+                // Exit fullscreen first if in fullscreen
+                if (document.fullscreenElement) {
+                  await document.exitFullscreen();
+                }
+                const isVideoPlaying = mediaType === 'video' && showVideoPlayer;
+                const res = await fetch('/api/mini-toggle', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ hasVideo: isVideoPlaying }),
+                });
                 const data = await res.json();
                 const appEl = document.querySelector('.app');
                 if (data.mini) {
