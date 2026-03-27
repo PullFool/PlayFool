@@ -12,10 +12,18 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Serve built React app
+// Serve built React app with no-cache headers to prevent stale versions after update
 const buildDir = path.join(__dirname, 'build');
 if (fs.existsSync(buildDir)) {
-  app.use(express.static(buildDir));
+  app.use(express.static(buildDir, {
+    etag: false,
+    maxAge: 0,
+    setHeaders: (res) => {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    }
+  }));
 }
 
 // Downloads directories
