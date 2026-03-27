@@ -996,9 +996,31 @@ app.get('/api/localvideo', (req, res) => {
   const ext = path.extname(resolved).toLowerCase();
   const mimeMap = { '.mp4': 'video/mp4', '.mkv': 'video/x-matroska', '.avi': 'video/x-msvideo',
     '.mov': 'video/quicktime', '.wmv': 'video/x-ms-wmv', '.flv': 'video/x-flv', '.webm': 'video/webm' };
-  res.setHeader('Content-Type', mimeMap[ext] || 'video/mp4');
-  res.setHeader('Accept-Ranges', 'bytes');
-  fs.createReadStream(resolved).pipe(res);
+  const contentType = mimeMap[ext] || 'video/mp4';
+  const stat = fs.statSync(resolved);
+  const fileSize = stat.size;
+  const range = req.headers.range;
+
+  if (range) {
+    const parts = range.replace(/bytes=/, '').split('-');
+    const start = parseInt(parts[0], 10);
+    const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+    const chunkSize = end - start + 1;
+    res.writeHead(206, {
+      'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+      'Accept-Ranges': 'bytes',
+      'Content-Length': chunkSize,
+      'Content-Type': contentType,
+    });
+    fs.createReadStream(resolved, { start, end }).pipe(res);
+  } else {
+    res.writeHead(200, {
+      'Content-Length': fileSize,
+      'Content-Type': contentType,
+      'Accept-Ranges': 'bytes',
+    });
+    fs.createReadStream(resolved).pipe(res);
+  }
 });
 
 // API: Toggle mini player mode
@@ -1007,11 +1029,21 @@ app.post('/api/mini-toggle', (req, res) => {
   try {
     if (typeof nw !== 'undefined') {
       const win = nw.Window.get();
+      const hasVideo = req.body && req.body.hasVideo;
+      // Exit fullscreen first if active
+      try { win.leaveFullscreen(); } catch(e) {}
+      try { win.leaveKioskMode(); } catch(e) {}
+
       isMiniMode = !isMiniMode;
       if (isMiniMode) {
-        win.setMinimumSize(380, 70);
-        win.resizeTo(400, 70);
-        win.setAlwaysOnTop(true);
+        const height = hasVideo ? 310 : 70;
+        // Restore window first, then resize after delay
+        try { win.restore(); } catch(e) {}
+        setTimeout(() => {
+          win.setMinimumSize(380, height);
+          win.resizeTo(420, height);
+          win.setAlwaysOnTop(true);
+        }, 200);
       } else {
         win.setMinimumSize(900, 600);
         win.resizeTo(1200, 800);

@@ -32,7 +32,7 @@
     "web-vitals": "^2.1.4"
   },
   "devDependencies": {
-    "nw": "^0.92.0"
+    "nw": "^0.92.0-sdk"
   },
   "scripts": {
     "start": "react-scripts start",

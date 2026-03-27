@@ -2,7 +2,6 @@
   position: fixed;
   top: 0;
   right: 0;
-  width: 420px;
   height: calc(100vh - var(--player-height));
   background: var(--bg-secondary);
   border-left: 1px solid var(--border);
@@ -10,6 +9,20 @@
   display: flex;
   flex-direction: column;
   transition: transform 0.25s ease;
+}
+
+.resizeHandle {
+  position: absolute;
+  left: -4px;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  z-index: 10;
+}
+
+.resizeHandle:hover {
+  background: var(--green);
+  opacity: 0.3;
 }
 
 .visible {
