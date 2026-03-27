@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import { IoLogoYoutube, IoList, IoHome, IoVideocam, IoSunny, IoMoon } from 'react-icons/io5';
+import { APP_VERSION } from './Tour';
 import styles from './Sidebar.module.css';
 
 function Sidebar() {
@@ -39,7 +40,7 @@ function Sidebar() {
         </button>
         <div className={styles.trademarkRow}>
           <span className={styles.trademark}>Made by PullFool</span>
-          <span className={styles.version}>v1.8.0</span>
+          <span className={styles.version}>v{APP_VERSION}</span>
         </div>
       </div>
     </aside>
