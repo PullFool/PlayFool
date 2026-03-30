@@ -56,11 +56,12 @@ function Equalizer({ onClose }) {
 
     filtersRef.current = filters;
 
-    // Connect all audio/video elements
+    // Connect audio elements and unmuted video elements (skip muted preview videos to prevent double sound)
     const connectMedia = () => {
       if (connectedRef.current) return;
-      const audioEls = document.querySelectorAll('audio, video');
-      audioEls.forEach(el => {
+      const mediaEls = document.querySelectorAll('audio, video');
+      mediaEls.forEach(el => {
+        if (el.tagName === 'VIDEO' && el.muted) return; // Skip muted preview videos
         try {
           const source = ctx.createMediaElementSource(el);
           source.connect(filters[0]);

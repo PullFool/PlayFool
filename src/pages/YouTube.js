@@ -183,7 +183,7 @@ function YouTube() {
   };
 
   return (
-    <div className="page">
+    <div className="page" style={{ position: 'relative' }}>
       {/* Loader overlay for search and preview */}
       {(searching || loadingPreview) && (
         <div className={styles.loaderOverlay}>
