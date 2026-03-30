@@ -66,15 +66,20 @@ app.use('/downloads', express.static(downloadsDir, {
 
 // --- Helpers ---
 
+// Track all spawned child processes so we can kill them on exit
+const activeProcesses = new Set();
+
 function runCommand(cmd, args, options = {}) {
   return new Promise((resolve) => {
-    execFile(cmd, args, {
+    const child = execFile(cmd, args, {
       maxBuffer: 10 * 1024 * 1024,
       timeout: options.timeout || 30000,
       windowsHide: true,
     }, (err, stdout, stderr) => {
+      activeProcesses.delete(child);
       resolve({ err, stdout: stdout || '', stderr: stderr || '' });
     });
+    activeProcesses.add(child);
   });
 }
 
@@ -198,9 +203,9 @@ app.get('/api/stream', async (req, res) => {
   const url = `https://www.youtube.com/watch?v=${videoId}`;
 
   if (streamType === 'video') {
-    // Get video+audio combined stream (includes sound)
+    // Get video-only stream (no audio) to prevent double sound — audio plays separately via audioRef
     const quality = parseInt(req.query.quality, 10) || 720;
-    const format = `best[ext=mp4][height<=${quality}]/best[ext=mp4]/best`;
+    const format = `bestvideo[ext=mp4][height<=${quality}]/bestvideo[ext=mp4]/bestvideo[height<=${quality}]/bestvideo/best[ext=mp4][height<=${quality}]/best`;
     const args = [...ytdlp.args, '-f', format, '--get-url', '--no-playlist', url];
     const { stdout } = await runCommand(ytdlp.cmd, args, { timeout: 15000 });
     const videoUrl = stdout.trim();
@@ -485,7 +490,7 @@ async function generateVideoThumbnail(videoPath, basename) {
   }
 
   return new Promise((resolve) => {
-    execFile(ffmpegExe, [
+    const child = execFile(ffmpegExe, [
       '-i', videoPath,
       '-ss', '00:00:03',
       '-vframes', '1',
@@ -494,6 +499,7 @@ async function generateVideoThumbnail(videoPath, basename) {
       '-y',
       thumbPath,
     ], { timeout: 15000, windowsHide: true }, (err) => {
+      activeProcesses.delete(child);
       if (fs.existsSync(thumbPath)) {
         console.log('Thumbnail generated:', thumbPath);
         resolve(thumbPath);
@@ -502,6 +508,7 @@ async function generateVideoThumbnail(videoPath, basename) {
         resolve(null);
       }
     });
+    activeProcesses.add(child);
   });
 }
 
@@ -1203,10 +1210,20 @@ startServer(3001).then((server) => {
   console.error('Failed to start server:', err);
 });
 
+// Kill all tracked child processes (yt-dlp, ffmpeg, etc.)
+function killAllChildProcesses() {
+  for (const child of activeProcesses) {
+    try { child.kill('SIGTERM'); } catch(e) {}
+  }
+  activeProcesses.clear();
+}
+
 // Shut down server and force exit when NW.js window closes
 if (typeof nw !== 'undefined') {
   nw.Window.get().on('close', function() {
-    // Close the server first
+    // Kill all child processes first (yt-dlp, ffmpeg, etc.)
+    killAllChildProcesses();
+    // Close the server
     if (activeServer) {
       activeServer.close(() => {
         process.exit(0);
@@ -1220,10 +1237,12 @@ if (typeof nw !== 'undefined') {
 
 // Also handle process signals
 process.on('SIGINT', () => {
+  killAllChildProcesses();
   if (activeServer) activeServer.close();
   process.exit(0);
 });
 process.on('SIGTERM', () => {
+  killAllChildProcesses();
   if (activeServer) activeServer.close();
   process.exit(0);
 });

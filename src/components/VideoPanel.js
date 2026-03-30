@@ -57,6 +57,14 @@ function VideoPanel() {
     }
   }, [currentSong, isVideo, isLocalVideo, volume, bindVideoEvents]);
 
+  // Ensure preview video stays muted (React muted prop is unreliable + Equalizer Web Audio bypasses it)
+  useEffect(() => {
+    if (!videoEl.current || !isVideo || isLocalVideo) return;
+    const vid = videoEl.current;
+    vid.muted = true;
+    vid.volume = 0;
+  }, [isVideo, isLocalVideo, currentTime]); // re-enforce on each timeupdate cycle
+
   // Sync YouTube preview video play/pause with audio state
   useEffect(() => {
     if (!videoEl.current || !isVideo || isLocalVideo) return;
