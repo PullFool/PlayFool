@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import styles from './Tour.module.css';
 
-const APP_VERSION = '1.9.3';
+const APP_VERSION = '1.9.4';
 
 const welcomeSteps = [
   {
@@ -59,28 +59,33 @@ const welcomeSteps = [
 const updateSteps = [
   {
     title: `What's New in v${APP_VERSION}`,
-    description: 'PlayFool has been updated with awesome new features!',
+    description: 'PlayFool just got more polish and safer file management.',
     icon: '🆕',
   },
   {
-    title: 'Dark / Light Theme',
-    description: 'Switch between dark and light mode! Click the sun/moon icon at the bottom of the sidebar.',
-    icon: '🌓',
+    title: 'Delete Files from Your Library',
+    description: 'Hover any song or video and click the red trash icon to remove its file from your computer. Deleted files go to your Recycle Bin, so you can always restore them if you change your mind.',
+    icon: '🗑️',
   },
   {
-    title: 'Mini Player',
-    description: 'Click the minimize icon in the player bar to shrink PlayFool into a small floating window that stays on top of other apps. Click again to expand.',
-    icon: '🔲',
+    title: 'Themed Dialogs',
+    description: 'Confirmations and error popups now match PlayFool\'s dark theme — no more jarring system dialogs.',
+    icon: '🎨',
   },
   {
-    title: 'Song Queue',
-    description: 'Build your own "Up Next" list! Hover over any song and click:\n⏭ Play Next - inserts after current song\n☰ Add to Queue - adds to the end\nClick the queue icon in the player bar to see and manage your queue.',
-    icon: '📋',
+    title: 'Smoother Search + Video',
+    description: 'The search loading overlay no longer covers the video panel while you\'re watching. Enjoy YouTube previews without interruption.',
+    icon: '🔍',
   },
   {
-    title: 'More Improvements',
-    description: 'Equalizer with presets\nSearch history\nDrag & drop playlist reorder\nDownload queue\nAlbum art thumbnails\nAuto-update checker',
-    icon: '✨',
+    title: 'No More Double Sound',
+    description: 'Fixed the double-audio issue on YouTube previews so you get clean playback every time.',
+    icon: '🔊',
+  },
+  {
+    title: 'Cleaner Exit + Silent Error Reports',
+    description: 'The app now fully cleans up background processes when you close it. Any crashes are automatically reported to us so we can ship fixes faster — no action needed from you.',
+    icon: '🛡️',
   },
   {
     title: 'Enjoy the update!',

@@ -85,7 +85,7 @@ jobs:
           }
 
           # Package.json for NW.js
-          '{"name":"playfool","version":"1.0.0","main":"index.html","node-main":"server.js","window":{"title":"PlayFool","width":1200,"height":800,"min_width":900,"min_height":600,"icon":"public/icon.png","toolbar":false,"frame":true},"dependencies":{"express":"^4.21.2","cors":"^2.8.5"}}' | Set-Content -Path "$dist/package.json" -Encoding ASCII -NoNewline
+          '{"name":"playfool","version":"1.0.0","main":"index.html","node-main":"server.js","window":{"title":"PlayFool","width":1200,"height":800,"min_width":900,"min_height":600,"icon":"public/icon.png","toolbar":false,"frame":true},"dependencies":{"express":"^4.21.2","cors":"^2.8.5","trash":"^7.2.0"}}' | Set-Content -Path "$dist/package.json" -Encoding ASCII -NoNewline
 
           # Copy only production dependencies
           New-Item -ItemType Directory -Force -Path "$dist/node_modules"
@@ -99,6 +99,7 @@ jobs:
           Write-Host "=== Verify deps ==="
           Write-Host "express: $(Test-Path "$dist/node_modules/express")"
           Write-Host "cors: $(Test-Path "$dist/node_modules/cors")"
+          Write-Host "trash: $(Test-Path "$dist/node_modules/trash")"
 
           # Convert PNG to ICO using magick (available on windows-latest)
           magick "public/icon.png" -define icon:auto-resize=256,128,64,48,32,16 "public/icon.ico"
@@ -230,7 +231,7 @@ jobs:
             cp -R bin "$RESOURCES/bin"
           fi
 
-          echo '{"name":"playfool","version":"1.0.0","main":"index.html","node-main":"server.js","window":{"title":"PlayFool","width":1200,"height":800,"min_width":900,"min_height":600,"icon":"public/icon.png","toolbar":false,"frame":true},"dependencies":{"express":"^4.21.2","cors":"^2.8.5"}}' > "$RESOURCES/package.json"
+          echo '{"name":"playfool","version":"1.0.0","main":"index.html","node-main":"server.js","window":{"title":"PlayFool","width":1200,"height":800,"min_width":900,"min_height":600,"icon":"public/icon.png","toolbar":false,"frame":true},"dependencies":{"express":"^4.21.2","cors":"^2.8.5","trash":"^7.2.0"}}' > "$RESOURCES/package.json"
 
           # Install production deps only
           cd "$RESOURCES"
@@ -240,6 +241,7 @@ jobs:
           echo "=== Verify deps ==="
           echo "express: $(test -d "$RESOURCES/node_modules/express" && echo YES || echo NO)"
           echo "cors: $(test -d "$RESOURCES/node_modules/cors" && echo YES || echo NO)"
+          echo "trash: $(test -d "$RESOURCES/node_modules/trash" && echo YES || echo NO)"
 
           # Update app name in plist
           PLIST="$APP/PlayFool.app/Contents/Info.plist"

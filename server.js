@@ -8,6 +8,10 @@ const { execFile } = require('child_process');
 const https = require('https');
 const http = require('http');
 
+// trash sends files to the OS recycle bin instead of permanently deleting them
+let trash = null;
+try { trash = require('trash'); } catch(e) { console.warn('trash module not available, will fall back to permanent delete'); }
+
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -959,6 +963,45 @@ app.post('/api/scan/remove', (req, res) => {
     } catch(e) {}
   }
   res.json({ success: true });
+});
+
+// API: Move file to recycle bin AND remove from scan cache
+app.post('/api/file/delete', async (req, res) => {
+  const { id, type, filePath } = req.body;
+  if (!filePath) return res.json({ error: 'No file path' });
+
+  // Security: only allow deleting files inside user home dir, downloads dir, or videos dir
+  const homeDir = os.homedir();
+  const resolved = path.resolve(filePath);
+  const allowedRoots = [homeDir, downloadsDir, videosDir];
+  const allowed = allowedRoots.some(root => resolved.startsWith(path.resolve(root)));
+  if (!allowed) return res.status(403).json({ error: 'Access denied' });
+
+  if (fs.existsSync(resolved)) {
+    try {
+      if (trash) {
+        await trash([resolved]); // sends to Recycle Bin (Win) / Trash (Mac/Linux)
+      } else {
+        fs.unlinkSync(resolved); // fallback if trash module failed to load
+      }
+    } catch (e) {
+      return res.json({ error: 'Failed to delete file: ' + e.message });
+    }
+  }
+
+  // Also remove from scan cache if present
+  if (id) {
+    const cachePath = type === 'video' ? videoCachePath : musicCachePath;
+    if (fs.existsSync(cachePath)) {
+      try {
+        const cached = JSON.parse(fs.readFileSync(cachePath, 'utf-8'));
+        const updated = cached.filter(item => item.id !== id);
+        fs.writeFileSync(cachePath, JSON.stringify(updated), 'utf-8');
+      } catch(e) {}
+    }
+  }
+
+  res.json({ success: true, trash: !!trash });
 });
 
 // Serve scanned local files

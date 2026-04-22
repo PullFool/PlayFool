@@ -96,6 +96,25 @@
 .card:hover .removeBtn { opacity: 1; }
 .removeBtn:hover { color: #ff6b6b; background: rgba(0,0,0,0.9); }
 
+.deleteBtn {
+  position: absolute;
+  top: 6px;
+  right: 36px;
+  background: rgba(0,0,0,0.7);
+  border: none;
+  color: #ff6b6b;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 4px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  opacity: 0;
+  transition: all 0.2s;
+}
+.card:hover .deleteBtn { opacity: 1; }
+.deleteBtn:hover { color: #fff; background: #d32f2f; }
+
 .cardLocation {
   font-size: 10px;
   color: var(--text-secondary);

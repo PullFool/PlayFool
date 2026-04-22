@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAudio } from '../context/PlayerContext';
-import { IoPlay, IoVideocam, IoRefresh, IoShuffle, IoSearch, IoClose } from 'react-icons/io5';
+import { IoPlay, IoVideocam, IoRefresh, IoShuffle, IoSearch, IoClose, IoTrash } from 'react-icons/io5';
+import ConfirmDialog from '../components/ConfirmDialog';
 import styles from './Videos.module.css';
 
 const API_BASE = process.env.REACT_APP_API_URL;
@@ -17,6 +18,7 @@ function Videos() {
   const [scannedVideos, setScannedVideos] = useState(savedScannedVids);
   const [loading, setLoading] = useState(!initialVidsLoaded);
   const [scanning, setScanning] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState(null);
 
   // Save state when it changes
   useEffect(() => { savedDownloadedVids = downloadedVideos; }, [downloadedVideos]);
@@ -36,6 +38,7 @@ function Videos() {
           cover: v.thumbnail ? `${SERVER_BASE}${encodeURI(v.thumbnail)}` : null,
           type: 'video',
           artist: 'PlayFool',
+          source: 'youtube',
         })));
       }
     } catch (e) {
@@ -188,11 +191,62 @@ function Videos() {
                     <IoClose />
                   </button>
                 )}
+                {(video.source === 'scanned' || video.source === 'youtube') && (video.fullPath || video.filePath) && (
+                  <button className={styles.deleteBtn} title="Delete file from disk"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setConfirmDialog({
+                        title: 'Delete video?',
+                        message: `"${video.title}"\n\nThis will delete the file from your computer.`,
+                        confirmText: 'Delete',
+                        danger: true,
+                        onConfirm: () => {
+                          setConfirmDialog(null);
+                          fetch(`${API_BASE}/file/delete`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              id: video.id,
+                              type: 'video',
+                              filePath: video.fullPath || video.filePath,
+                            }),
+                          }).then(r => r.json()).then(data => {
+                            if (data.error) {
+                              setConfirmDialog({ variant: 'alert', title: 'Delete failed', message: data.error, confirmText: 'OK', onConfirm: () => setConfirmDialog(null) });
+                              return;
+                            }
+                            if (video.source === 'scanned') {
+                              setScannedVideos(prev => prev.filter(v => v.id !== video.id));
+                            } else {
+                              setDownloadedVideos(prev => prev.filter(v => v.id !== video.id));
+                            }
+                          }).catch(() => {
+                            setConfirmDialog({ variant: 'alert', title: 'Delete failed', message: 'Could not reach the server.', confirmText: 'OK', onConfirm: () => setConfirmDialog(null) });
+                          });
+                        },
+                      });
+                    }}
+                  >
+                    <IoTrash />
+                  </button>
+                )}
               </div>
             );
           })}
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!confirmDialog}
+        title={confirmDialog?.title}
+        message={confirmDialog?.message}
+        confirmText={confirmDialog?.confirmText}
+        cancelText={confirmDialog?.cancelText}
+        danger={confirmDialog?.danger}
+        variant={confirmDialog?.variant}
+        onConfirm={confirmDialog?.onConfirm}
+        onCancel={() => setConfirmDialog(null)}
+      />
     </div>
   );
 }

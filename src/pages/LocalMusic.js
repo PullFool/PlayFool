@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { usePlayer } from '../context/PlayerContext';
-import { IoCloudUpload, IoMusicalNotes, IoPlay, IoAdd, IoRefresh, IoShuffle, IoSearch, IoPlaySkipForward, IoList, IoClose } from 'react-icons/io5';
+import { IoCloudUpload, IoMusicalNotes, IoPlay, IoAdd, IoRefresh, IoShuffle, IoSearch, IoPlaySkipForward, IoList, IoClose, IoTrash } from 'react-icons/io5';
+import ConfirmDialog from '../components/ConfirmDialog';
 import styles from './LocalMusic.module.css';
 
 const API_BASE = process.env.REACT_APP_API_URL;
@@ -20,6 +21,7 @@ function LocalMusic() {
   const [showPlaylistMenu, setShowPlaylistMenu] = useState(null);
   const [loading, setLoading] = useState(!initialLoaded);
   const [scanning, setScanning] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState(null); // { title, message, onConfirm, danger, variant }
 
   // Save state when it changes
   useEffect(() => { savedDownloaded = downloadedSongs; }, [downloadedSongs]);
@@ -238,6 +240,46 @@ function LocalMusic() {
                       <IoClose />
                     </button>
                   )}
+                  {(song.source === 'scanned' || song.source === 'youtube') && (song.fullPath || song.filePath) && (
+                    <button className="btn-icon btn-icon-muted" title="Delete file from disk"
+                      style={{ color: '#ff6b6b' }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setConfirmDialog({
+                          title: 'Delete file?',
+                          message: `"${song.title}"\n\nThis will delete the file from your computer.`,
+                          confirmText: 'Delete',
+                          danger: true,
+                          onConfirm: () => {
+                            setConfirmDialog(null);
+                            fetch(`${API_BASE}/file/delete`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                id: song.id,
+                                type: 'music',
+                                filePath: song.fullPath || song.filePath,
+                              }),
+                            }).then(r => r.json()).then(data => {
+                              if (data.error) {
+                                setConfirmDialog({ variant: 'alert', title: 'Delete failed', message: data.error, confirmText: 'OK', onConfirm: () => setConfirmDialog(null) });
+                                return;
+                              }
+                              if (song.source === 'scanned') {
+                                setScannedSongs(prev => prev.filter(s => s.id !== song.id));
+                              } else {
+                                setDownloadedSongs(prev => prev.filter(s => s.id !== song.id));
+                              }
+                            }).catch(() => {
+                              setConfirmDialog({ variant: 'alert', title: 'Delete failed', message: 'Could not reach the server.', confirmText: 'OK', onConfirm: () => setConfirmDialog(null) });
+                            });
+                          },
+                        });
+                      }}
+                    >
+                      <IoTrash />
+                    </button>
+                  )}
                   {showPlaylistMenu === song.id && (
                     <div className={styles.dropdown}>
                       {playlists.length === 0 ? (
@@ -259,6 +301,18 @@ function LocalMusic() {
           </ul>
         </>
       )}
+
+      <ConfirmDialog
+        open={!!confirmDialog}
+        title={confirmDialog?.title}
+        message={confirmDialog?.message}
+        confirmText={confirmDialog?.confirmText}
+        cancelText={confirmDialog?.cancelText}
+        danger={confirmDialog?.danger}
+        variant={confirmDialog?.variant}
+        onConfirm={confirmDialog?.onConfirm}
+        onCancel={() => setConfirmDialog(null)}
+      />
     </div>
   );
 }
