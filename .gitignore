@@ -8,3 +8,4 @@ nw-data/
 package-test.json
 test-electron.js
 test-dist/
+error-config.json

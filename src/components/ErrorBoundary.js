@@ -12,6 +12,22 @@ class ErrorBoundary extends Component {
 
   componentDidCatch(error, errorInfo) {
     console.error('PlayFool error:', error, errorInfo);
+    // Silently report to backend
+    const API_BASE = process.env.REACT_APP_API_URL || '/api';
+    try {
+      fetch(`${API_BASE}/report-error`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          source: 'react.ErrorBoundary',
+          message: error?.message || String(error),
+          stack: (error?.stack || '') + '\n\nComponent stack:' + (errorInfo?.componentStack || ''),
+          url: window.location.href,
+          userAgent: navigator.userAgent,
+        }),
+        keepalive: true,
+      }).catch(() => {});
+    } catch(e) { /* silent */ }
   }
 
   render() {

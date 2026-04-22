@@ -75,6 +75,15 @@ jobs:
           Copy-Item -Recurse "bin" "$dist/bin"
           Copy-Item -Recurse "public" "$dist/public"
 
+          # Inject Discord webhook URL for silent error reporting
+          $webhook = "${{ secrets.DISCORD_ERROR_WEBHOOK }}"
+          if ($webhook) {
+            @{ webhook = $webhook } | ConvertTo-Json | Set-Content -Path "$dist/error-config.json" -Encoding UTF8
+            Write-Host "error-config.json created"
+          } else {
+            Write-Host "DISCORD_ERROR_WEBHOOK secret not set - error reporting disabled"
+          }
+
           # Package.json for NW.js
           '{"name":"playfool","version":"1.0.0","main":"index.html","node-main":"server.js","window":{"title":"PlayFool","width":1200,"height":800,"min_width":900,"min_height":600,"icon":"public/icon.png","toolbar":false,"frame":true},"dependencies":{"express":"^4.21.2","cors":"^2.8.5"}}' | Set-Content -Path "$dist/package.json" -Encoding ASCII -NoNewline
 
@@ -205,6 +214,15 @@ jobs:
           cp -R build "$RESOURCES/build"
           cp -R public "$RESOURCES/public"
 
+          # Inject Discord webhook URL for silent error reporting
+          WEBHOOK='${{ secrets.DISCORD_ERROR_WEBHOOK }}'
+          if [ -n "$WEBHOOK" ]; then
+            printf '{"webhook":"%s"}' "$WEBHOOK" > "$RESOURCES/error-config.json"
+            echo "error-config.json created"
+          else
+            echo "DISCORD_ERROR_WEBHOOK secret not set - error reporting disabled"
+          fi
+
           if [ -d ffmpeg ] && [ "$(ls -A ffmpeg 2>/dev/null)" ]; then
             cp -R ffmpeg "$RESOURCES/ffmpeg"
           fi
@@ -230,11 +248,26 @@ jobs:
             /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName PlayFool" "$PLIST" 2>/dev/null || true
           fi
 
-          # Remove quarantine
+          # Remove quarantine (strip xattr from every file individually — more reliable than -cr for framework bundles)
+          find "$APP/PlayFool.app" -print0 2>/dev/null | xargs -0 xattr -c 2>/dev/null || true
           xattr -cr "$APP/PlayFool.app" 2>/dev/null || true
 
-          # Create install helper script
-          printf '#!/bin/bash\ncd "$(dirname "$0")"\necho "Setting up PlayFool..."\nxattr -cr "PlayFool.app"\nchmod -R +x "PlayFool.app"\necho "Done! Opening PlayFool..."\nopen "PlayFool.app"\n' > "$APP/Install PlayFool.command"
+          # Create install helper script — aggressive xattr strip handles Python.framework inside yt-dlp
+          {
+            echo '#!/bin/bash'
+            echo 'cd "$(dirname "$0")"'
+            echo 'echo "Setting up PlayFool (stripping quarantine from all files)..."'
+            echo '# xattr -cr can miss files inside framework bundles, so strip each file individually'
+            echo 'find "PlayFool.app" -print0 2>/dev/null | xargs -0 xattr -d com.apple.quarantine 2>/dev/null'
+            echo 'find "PlayFool.app" -print0 2>/dev/null | xargs -0 xattr -c 2>/dev/null'
+            echo 'xattr -cr "PlayFool.app" 2>/dev/null'
+            echo 'chmod -R +x "PlayFool.app"'
+            echo 'find "PlayFool.app" -name "yt-dlp*" -exec chmod +x {} \; 2>/dev/null'
+            echo 'find "PlayFool.app" -name "*.dylib" -exec chmod +x {} \; 2>/dev/null'
+            echo 'find "PlayFool.app" -path "*Python.framework*" -type f -exec xattr -c {} \; 2>/dev/null'
+            echo 'echo "Done! Opening PlayFool..."'
+            echo 'open "PlayFool.app"'
+          } > "$APP/Install PlayFool.command"
           chmod +x "$APP/Install PlayFool.command"
 
           cd "$APP"
@@ -288,10 +321,14 @@ jobs:
 
             ### Install
             **Windows:** Download and run `PlayFool-Setup.exe` → Follow the setup wizard.
-            **macOS:** Open Terminal and run:
+            **macOS:** Extract the zip and double-click `Install PlayFool.command` (recommended — handles YouTube/yt-dlp quarantine fix automatically).
+
+            If the `.command` file is blocked, right-click → Open, or run this in Terminal:
             ```
-            cd ~/Downloads && unzip -o PlayFool-macOS.zip -d PlayFool && xattr -cr PlayFool/PlayFool.app && open PlayFool/PlayFool.app
+            cd ~/Downloads && unzip -o PlayFool-macOS.zip -d PlayFool && cd PlayFool && find PlayFool.app -print0 | xargs -0 xattr -c 2>/dev/null; xattr -cr PlayFool.app && open PlayFool.app
             ```
+
+            > **Note:** If you see "Python.framework is damaged" when using YouTube, run the `Install PlayFool.command` script — it strips the macOS quarantine flag from yt-dlp's bundled Python framework.
 
             **No additional software required!** yt-dlp and ffmpeg are bundled.
 

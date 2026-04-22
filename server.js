@@ -64,6 +64,89 @@ app.use('/downloads', express.static(downloadsDir, {
   },
 }));
 
+// --- Error reporting (silently forwards errors to Discord webhook) ---
+
+// Load webhook URL from build-time config, fall back to env var
+let DISCORD_WEBHOOK = process.env.DISCORD_ERROR_WEBHOOK || '';
+try {
+  const cfg = require('./error-config.json');
+  DISCORD_WEBHOOK = cfg.webhook || DISCORD_WEBHOOK;
+} catch(e) { /* no config file, use env */ }
+
+const APP_VERSION_SERVER = require('./package.json').version || 'unknown';
+const recentErrors = new Map(); // signature -> last sent timestamp (for dedup/rate-limit)
+const ERROR_DEDUP_WINDOW_MS = 30000;
+
+function sanitizeText(text) {
+  if (!text || typeof text !== 'string') return String(text || '');
+  // Strip Windows usernames: C:\Users\john\... -> C:\Users\[user]\...
+  text = text.replace(/([A-Za-z]:\\Users\\)[^\\]+/g, '$1[user]');
+  // Strip Unix home paths: /Users/john/... and /home/john/...
+  text = text.replace(/(\/Users\/)[^/]+/g, '$1[user]');
+  text = text.replace(/(\/home\/)[^/]+/g, '$1[user]');
+  return text;
+}
+
+function reportError(source, err, extra = {}) {
+  if (!DISCORD_WEBHOOK) return;
+
+  const message = sanitizeText(err?.message || String(err));
+  const stack = sanitizeText(err?.stack || '');
+  const signature = `${source}:${message}`;
+
+  // Dedup: don't send the same error twice within the window
+  const now = Date.now();
+  const last = recentErrors.get(signature);
+  if (last && (now - last) < ERROR_DEDUP_WINDOW_MS) return;
+  recentErrors.set(signature, now);
+
+  // Clean up old entries (prevent memory leak)
+  if (recentErrors.size > 100) {
+    for (const [key, ts] of recentErrors) {
+      if (now - ts > ERROR_DEDUP_WINDOW_MS) recentErrors.delete(key);
+    }
+  }
+
+  const fields = [
+    { name: 'Source', value: source, inline: true },
+    { name: 'Version', value: APP_VERSION_SERVER, inline: true },
+    { name: 'Platform', value: `${os.platform()} ${os.release()}`, inline: true },
+  ];
+  for (const [k, v] of Object.entries(extra)) {
+    fields.push({ name: k, value: String(sanitizeText(v)).slice(0, 1000), inline: false });
+  }
+
+  const payload = JSON.stringify({
+    username: 'PlayFool Error Reporter',
+    embeds: [{
+      title: `Error: ${message.slice(0, 250)}`,
+      description: stack ? '```\n' + stack.slice(0, 1500) + '\n```' : '_No stack trace_',
+      color: 15158332,
+      fields,
+      timestamp: new Date().toISOString(),
+    }],
+  });
+
+  try {
+    const url = new URL(DISCORD_WEBHOOK);
+    const req = https.request({
+      hostname: url.hostname,
+      path: url.pathname + url.search,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
+      timeout: 5000,
+    }, (res) => { res.on('data', () => {}); });
+    req.on('error', () => {}); // silent failure
+    req.on('timeout', () => req.destroy());
+    req.write(payload);
+    req.end();
+  } catch(e) { /* silent */ }
+}
+
+// Catch unhandled errors at the Node process level
+process.on('uncaughtException', (err) => reportError('uncaughtException', err));
+process.on('unhandledRejection', (reason) => reportError('unhandledRejection', reason instanceof Error ? reason : new Error(String(reason))));
+
 // --- Helpers ---
 
 // Track all spawned child processes so we can kill them on exit
@@ -1170,6 +1253,23 @@ app.post('/api/update/install', (req, res) => {
       process.exit(0);
     }, 1000);
   }, 500);
+});
+
+// Receive error reports from the React frontend and forward to Discord
+app.post('/api/report-error', (req, res) => {
+  const { message, stack, source, url, userAgent } = req.body || {};
+  if (!message) return res.json({ ok: false });
+  const err = new Error(message);
+  err.stack = stack;
+  reportError(source || 'frontend', err, { url, userAgent });
+  res.json({ ok: true });
+});
+
+// Express error middleware — catches thrown/rejected errors in route handlers
+app.use((err, req, res, next) => {
+  reportError('express', err, { route: req.originalUrl, method: req.method });
+  if (res.headersSent) return next(err);
+  res.status(500).json({ error: 'Internal server error' });
 });
 
 // Catch-all: serve React app for client-side routing
