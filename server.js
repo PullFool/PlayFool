@@ -1318,22 +1318,32 @@ function killAllChildProcesses() {
   activeProcesses.clear();
 }
 
-// Shut down server and force exit when NW.js window closes
-if (typeof nw !== 'undefined') {
-  nw.Window.get().on('close', function() {
-    // Kill all child processes first (yt-dlp, ffmpeg, etc.)
-    killAllChildProcesses();
-    // Close the server
-    if (activeServer) {
-      activeServer.close(() => {
-        process.exit(0);
+// Shut down server and force exit when NW.js window closes.
+// NOTE: nw.Window.get() throws "No current window" when server.js runs as node-main,
+// so guard it. Window close is also handled in index.html. SIGINT/SIGTERM/exit
+// handlers below are the reliable cleanup path.
+try {
+  if (typeof nw !== 'undefined' && nw.Window && typeof nw.Window.get === 'function') {
+    const win = nw.Window.get();
+    if (win && typeof win.on === 'function') {
+      win.on('close', function() {
+        killAllChildProcesses();
+        if (activeServer) {
+          activeServer.close(() => process.exit(0));
+        }
+        this.close(true);
+        setTimeout(() => process.exit(0), 2000);
       });
     }
-    this.close(true);
-    // Force exit after 2 seconds if server doesn't close cleanly
-    setTimeout(() => process.exit(0), 2000);
-  });
+  }
+} catch (e) {
+  // Running as node-main with no window context — rely on process signals instead
 }
+
+// Safety net: always kill child processes on any exit path
+process.on('exit', () => {
+  killAllChildProcesses();
+});
 
 // Also handle process signals
 process.on('SIGINT', () => {
