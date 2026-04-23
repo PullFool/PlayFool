@@ -33,13 +33,20 @@ function UpdateChecker() {
             a.name.toLowerCase().includes('setup') && a.name.endsWith('.exe')
           );
 
-          setUpdateInfo({
+          const info = {
             version: latestVersion,
             url: data.html_url,
             body: data.body || '',
             downloadUrl: setupAsset ? setupAsset.browser_download_url : null,
             fileName: setupAsset ? setupAsset.name : null,
-          });
+          };
+          setUpdateInfo(info);
+
+          // Auto-download in background on Windows so the user only has to click once (install)
+          const isWindows = navigator.userAgent.toLowerCase().includes('windows');
+          if (isWindows && info.downloadUrl) {
+            startBackgroundDownload(info);
+          }
         }
       } catch (e) {
         // Silently fail
@@ -47,31 +54,22 @@ function UpdateChecker() {
     };
 
     checkForUpdate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleAutoUpdate = async () => {
-    if (!updateInfo?.downloadUrl) {
-      // No setup exe found, fallback to opening browser
-      try { window.nw.Shell.openExternal(updateInfo.url); } catch(e) {
-        window.open(updateInfo.url, '_blank');
-      }
-      return;
-    }
-
+  const startBackgroundDownload = async (info) => {
     setDownloadState('downloading');
     setDownloadProgress(0);
 
     try {
-      // Download via server (server has access to filesystem)
-      const res = await fetch('/api/update/download', {
+      // Kick off the download on the backend
+      fetch('/api/update/download', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: updateInfo.downloadUrl, fileName: updateInfo.fileName }),
-      });
+        body: JSON.stringify({ url: info.downloadUrl, fileName: info.fileName }),
+      }).catch(() => {});
 
-      if (!res.ok) throw new Error('Download failed');
-
-      // Poll for download progress
+      // Poll progress until done
       const pollProgress = setInterval(async () => {
         try {
           const prog = await fetch('/api/update/progress');
@@ -86,16 +84,23 @@ function UpdateChecker() {
             setDownloadState('error');
           }
         } catch(e) {}
-      }, 500);
-
-      const data = await res.json();
-      if (data.success) {
-        setDownloadState('ready');
-      } else {
-        setDownloadState('error');
-      }
+      }, 1000);
     } catch (e) {
       setDownloadState('error');
+    }
+  };
+
+  const handleAutoUpdate = async () => {
+    if (!updateInfo?.downloadUrl) {
+      // No setup exe found (non-Windows), fallback to opening browser
+      try { window.nw.Shell.openExternal(updateInfo.url); } catch(e) {
+        window.open(updateInfo.url, '_blank');
+      }
+      return;
+    }
+    // Windows already downloads in background on load — just start if somehow idle
+    if (downloadState === 'idle') {
+      startBackgroundDownload(updateInfo);
     }
   };
 
@@ -130,14 +135,17 @@ function UpdateChecker() {
             <div className={styles.progressBar}>
               <div className={styles.progressFill} style={{ width: `${downloadProgress}%` }} />
             </div>
-            <span className={styles.progressText}>Downloading... {downloadProgress}%</span>
+            <span className={styles.progressText}>Preparing update... {downloadProgress}%</span>
           </div>
         )}
 
         {downloadState === 'ready' && (
-          <button className={styles.updateBtn} onClick={handleInstall}>
-            Restart & Install
-          </button>
+          <>
+            <button className={styles.updateBtn} onClick={handleInstall}>
+              Install & Restart
+            </button>
+            <button className={styles.dismissBtn} onClick={() => setDismissed(true)}>Later</button>
+          </>
         )}
 
         {downloadState === 'error' && (
