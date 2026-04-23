@@ -84,8 +84,11 @@ jobs:
             Write-Host "DISCORD_ERROR_WEBHOOK secret not set - error reporting disabled"
           }
 
-          # Package.json for NW.js
-          '{"name":"playfool","version":"1.0.0","main":"index.html","node-main":"server.js","window":{"title":"PlayFool","width":1200,"height":800,"min_width":900,"min_height":600,"icon":"public/icon.png","toolbar":false,"frame":true},"dependencies":{"express":"^4.21.2","cors":"^2.8.5","trash":"^7.2.0"}}' | Set-Content -Path "$dist/package.json" -Encoding ASCII -NoNewline
+          # Package.json for NW.js — version comes from the git tag so error reports identify the build
+          $ver = "${{ github.ref_name }}".TrimStart("v")
+          if ([string]::IsNullOrEmpty($ver)) { $ver = "dev" }
+          $pkgJson = '{"name":"playfool","version":"' + $ver + '","main":"index.html","node-main":"server.js","window":{"title":"PlayFool","width":1200,"height":800,"min_width":900,"min_height":600,"icon":"public/icon.png","toolbar":false,"frame":true},"dependencies":{"express":"^4.21.2","cors":"^2.8.5","trash":"^7.2.0"}}'
+          $pkgJson | Set-Content -Path "$dist/package.json" -Encoding ASCII -NoNewline
 
           # Copy only production dependencies
           New-Item -ItemType Directory -Force -Path "$dist/node_modules"
@@ -231,7 +234,11 @@ jobs:
             cp -R bin "$RESOURCES/bin"
           fi
 
-          echo '{"name":"playfool","version":"1.0.0","main":"index.html","node-main":"server.js","window":{"title":"PlayFool","width":1200,"height":800,"min_width":900,"min_height":600,"icon":"public/icon.png","toolbar":false,"frame":true},"dependencies":{"express":"^4.21.2","cors":"^2.8.5","trash":"^7.2.0"}}' > "$RESOURCES/package.json"
+          # Version comes from the git tag so error reports identify the build
+          VER="${{ github.ref_name }}"
+          VER="${VER#v}"
+          [ -z "$VER" ] && VER="dev"
+          echo "{\"name\":\"playfool\",\"version\":\"$VER\",\"main\":\"index.html\",\"node-main\":\"server.js\",\"window\":{\"title\":\"PlayFool\",\"width\":1200,\"height\":800,\"min_width\":900,\"min_height\":600,\"icon\":\"public/icon.png\",\"toolbar\":false,\"frame\":true},\"dependencies\":{\"express\":\"^4.21.2\",\"cors\":\"^2.8.5\",\"trash\":\"^7.2.0\"}}" > "$RESOURCES/package.json"
 
           # Install production deps only
           cd "$RESOURCES"
