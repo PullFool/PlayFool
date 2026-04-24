@@ -27,6 +27,10 @@ function YouTube() {
   const [selectedQuality, setSelectedQuality] = useState('720');
   const [loadingQualities, setLoadingQualities] = useState(false);
   const [previewQuality, setPreviewQuality] = useState('720');
+  const [resultsLimit, setResultsLimit] = useState(() => {
+    const saved = localStorage.getItem('playfool_search_limit');
+    return saved ? parseInt(saved, 10) : 30;
+  });
   const [searchHistory, setSearchHistory] = useState(() => {
     const saved = localStorage.getItem('playfool_search_history');
     return saved ? JSON.parse(saved) : [];
@@ -61,7 +65,7 @@ function YouTube() {
     setDownloadState({});
     addToHistory(q);
     try {
-      const res = await fetch(`${API_BASE}/search?q=${encodeURIComponent(q)}`);
+      const res = await fetch(`${API_BASE}/search?q=${encodeURIComponent(q)}&limit=${resultsLimit}`);
       const data = await res.json();
       if (data.error) { setError(data.error); setResults([]); }
       else setResults(data.results || []);
@@ -234,6 +238,22 @@ function YouTube() {
           <option value="480">480p</option>
           <option value="720">720p</option>
           <option value="1080">1080p</option>
+        </select>
+        <select
+          value={resultsLimit}
+          onChange={(e) => {
+            const v = parseInt(e.target.value, 10);
+            setResultsLimit(v);
+            localStorage.setItem('playfool_search_limit', String(v));
+          }}
+          className={styles.qualitySelect}
+          title="Number of results"
+        >
+          <option value="10">10 results</option>
+          <option value="15">15 results</option>
+          <option value="25">25 results</option>
+          <option value="30">30 results</option>
+          <option value="50">50 results</option>
         </select>
         <button onClick={search} disabled={searching} className="btn btn-primary">
           <IoSearch /> {searching ? 'Searching...' : 'Search'}

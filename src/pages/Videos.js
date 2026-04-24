@@ -18,6 +18,7 @@ function Videos() {
   const [scannedVideos, setScannedVideos] = useState(savedScannedVids);
   const [loading, setLoading] = useState(!initialVidsLoaded);
   const [scanning, setScanning] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [confirmDialog, setConfirmDialog] = useState(null);
 
   // Save state when it changes
@@ -118,6 +119,15 @@ function Videos() {
     }
   }
 
+  // Filter by search (title + filename)
+  const q = searchQuery.trim().toLowerCase();
+  const filteredVideos = q
+    ? allVideos.filter(v =>
+        (v.title || '').toLowerCase().includes(q) ||
+        (v.location || '').toLowerCase().includes(q)
+      )
+    : allVideos;
+
   const formatSize = (bytes) => {
     if (bytes > 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
     if (bytes > 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
@@ -133,11 +143,6 @@ function Videos() {
             disabled={scanning}>
             <IoSearch /> {scanning ? 'Scanning...' : 'Scan PC'}
           </button>
-          {allVideos.length > 0 && (
-            <button className="btn btn-secondary" onClick={() => shufflePlay(allVideos)}>
-              <IoShuffle /> Shuffle
-            </button>
-          )}
           <button onClick={loadVideos} className="btn-icon" title="Refresh">
             <IoRefresh />
           </button>
@@ -153,14 +158,57 @@ function Videos() {
           <p>Download videos from YouTube or scan your PC</p>
         </div>
       ) : (
+        <>
+        <div className="flex-between mb-12" style={{ gap: 12, alignItems: 'center' }}>
+          <div className={styles.searchWrap}>
+            <IoSearch className={styles.searchIcon} />
+            <input
+              type="text"
+              className={styles.searchInput}
+              placeholder="Search your videos..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Escape') setSearchQuery(''); }}
+            />
+            {searchQuery && (
+              <button
+                className={styles.searchClear}
+                onClick={() => setSearchQuery('')}
+                title="Clear search"
+              >
+                <IoClose />
+              </button>
+            )}
+          </div>
+          <div className="flex-row gap-8">
+            <button className="btn btn-secondary" onClick={() => shufflePlay(filteredVideos)} disabled={filteredVideos.length === 0}>
+              <IoShuffle /> Shuffle
+            </button>
+          </div>
+        </div>
+
+        <p className={styles.videoCount}>
+          {q
+            ? `${filteredVideos.length} of ${allVideos.length} video${allVideos.length !== 1 ? 's' : ''}`
+            : `${allVideos.length} video${allVideos.length !== 1 ? 's' : ''}`
+          }
+        </p>
+
+        {filteredVideos.length === 0 && q ? (
+          <div className="empty-state">
+            <IoSearch className="icon" />
+            <h3>No videos match "{searchQuery}"</h3>
+            <p>Try a different search term</p>
+          </div>
+        ) : (
         <div className={styles.grid}>
-          {allVideos.map((video, index) => {
+          {filteredVideos.map((video, index) => {
             const isActive = currentSong?.id === video.id;
             return (
               <div
                 key={video.id}
                 className={`${styles.card} ${isActive ? styles.cardActive : ''}`}
-                onClick={() => playSong(allVideos, index)}
+                onClick={() => playSong(filteredVideos, index)}
               >
                 <div className={styles.cardThumb}>
                   {video.cover && <img src={video.cover} alt="" className={styles.cardThumbImg} />}
@@ -242,6 +290,8 @@ function Videos() {
             );
           })}
         </div>
+        )}
+        </>
       )}
 
       <ConfirmDialog

@@ -251,8 +251,8 @@ app.get('/api/search', async (req, res) => {
   if (!ytdlp) return res.json({ error: 'yt-dlp not found. Run: pip install yt-dlp' });
 
   const safeQ = q.replace(/[^a-zA-Z0-9 \-_]/g, '');
-  // Allow frontend to request more results via ?limit=20 (default 15, cap at 50)
-  const limit = Math.max(1, Math.min(50, parseInt(req.query.limit, 10) || 15));
+  // Allow frontend to request more results via ?limit=50 (default 30, cap at 50)
+  const limit = Math.max(1, Math.min(50, parseInt(req.query.limit, 10) || 30));
   const args = [...ytdlp.args, `ytsearch${limit}:${safeQ}`, '--dump-json', '--flat-playlist', '--no-download'];
 
   const { stdout } = await runCommand(ytdlp.cmd, args);

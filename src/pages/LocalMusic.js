@@ -21,6 +21,7 @@ function LocalMusic() {
   const [showPlaylistMenu, setShowPlaylistMenu] = useState(null);
   const [loading, setLoading] = useState(!initialLoaded);
   const [scanning, setScanning] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [confirmDialog, setConfirmDialog] = useState(null); // { title, message, onConfirm, danger, variant }
 
   // Save state when it changes
@@ -134,6 +135,16 @@ function LocalMusic() {
     }
   }
 
+  // Filter by search query (title + artist + filename, case-insensitive)
+  const q = searchQuery.trim().toLowerCase();
+  const filteredSongs = q
+    ? allSongs.filter(s =>
+        (s.title || '').toLowerCase().includes(q) ||
+        (s.artist || '').toLowerCase().includes(q) ||
+        (s.location || '').toLowerCase().includes(q)
+      )
+    : allSongs;
+
   return (
     <div className="page">
       <div className="flex-between mb-24">
@@ -159,25 +170,56 @@ function LocalMusic() {
         </div>
       ) : (
         <>
-          <div className="flex-between mb-24">
-            <p className={`${styles.songCount} mb-0`}>
-              {allSongs.length} song{allSongs.length !== 1 ? 's' : ''}
-            </p>
+          <div className="flex-between mb-12" style={{ gap: 12, alignItems: 'center' }}>
+            <div className={styles.searchWrap}>
+              <IoSearch className={styles.searchIcon} />
+              <input
+                type="text"
+                className={styles.searchInput}
+                placeholder="Search your library..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Escape') setSearchQuery(''); }}
+              />
+              {searchQuery && (
+                <button
+                  className={styles.searchClear}
+                  onClick={() => setSearchQuery('')}
+                  title="Clear search"
+                >
+                  <IoClose />
+                </button>
+              )}
+            </div>
             <div className="flex-row gap-8">
-              <button className="btn btn-secondary" onClick={() => shufflePlay(allSongs)}>
+              <button className="btn btn-secondary" onClick={() => shufflePlay(filteredSongs)} disabled={filteredSongs.length === 0}>
                 <IoShuffle /> Shuffle
               </button>
-              <button className="btn btn-primary" onClick={() => playSong(allSongs, 0)}>
+              <button className="btn btn-primary" onClick={() => playSong(filteredSongs, 0)} disabled={filteredSongs.length === 0}>
                 <IoPlay /> Play All
               </button>
             </div>
           </div>
 
+          <p className={`${styles.songCount} mb-24`}>
+            {q
+              ? `${filteredSongs.length} of ${allSongs.length} song${allSongs.length !== 1 ? 's' : ''}`
+              : `${allSongs.length} song${allSongs.length !== 1 ? 's' : ''}`
+            }
+          </p>
+
+          {filteredSongs.length === 0 && q ? (
+            <div className="empty-state">
+              <IoSearch className="icon" />
+              <h3>No songs match "{searchQuery}"</h3>
+              <p>Try a different search term</p>
+            </div>
+          ) : (
           <ul className="song-list">
-            {allSongs.map((song, index) => (
+            {filteredSongs.map((song, index) => (
               <li key={song.id}
                 className={`song-item ${currentSong?.url === song.url ? 'active' : ''}`}
-                onClick={() => playSong(allSongs, index)}
+                onClick={() => playSong(filteredSongs, index)}
               >
                 <span className="song-item-number">
                   {currentSong?.url === song.url && isPlaying
@@ -293,6 +335,7 @@ function LocalMusic() {
               </li>
             ))}
           </ul>
+          )}
         </>
       )}
 
