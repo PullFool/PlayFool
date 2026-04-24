@@ -1236,6 +1236,15 @@ app.post('/api/update/download', async (req, res) => {
   updateProgress = { percent: 0, done: false, error: null };
   const filePath = path.join(updateDir, fileName);
 
+  // Clear any stale installers from previous attempts so install doesn't pick the wrong one
+  try {
+    for (const f of fs.readdirSync(updateDir)) {
+      if (f.toLowerCase().endsWith('.exe')) {
+        try { fs.unlinkSync(path.join(updateDir, f)); } catch(e) {}
+      }
+    }
+  } catch(e) {}
+
   try {
     await new Promise((resolve, reject) => {
       const download = (downloadUrl) => {
@@ -1297,11 +1306,18 @@ app.get('/api/update/progress', (req, res) => {
 });
 
 app.post('/api/update/install', (req, res) => {
-  // Find the downloaded installer
-  const files = fs.readdirSync(updateDir).filter(f => f.endsWith('.exe'));
-  if (files.length === 0) return res.json({ error: 'No installer found' });
+  // Find the downloaded installer — pick the most recently modified .exe to avoid running a stale one
+  const entries = fs.readdirSync(updateDir)
+    .filter(f => f.toLowerCase().endsWith('.exe'))
+    .map(f => {
+      const full = path.join(updateDir, f);
+      return { path: full, mtime: fs.statSync(full).mtimeMs };
+    })
+    .sort((a, b) => b.mtime - a.mtime);
 
-  const installerPath = path.join(updateDir, files[files.length - 1]);
+  if (entries.length === 0) return res.json({ error: 'No installer found' });
+
+  const installerPath = entries[0].path;
   res.json({ success: true, installing: true });
 
   // Run installer silently and quit app
