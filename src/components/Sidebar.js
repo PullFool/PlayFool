@@ -36,13 +36,52 @@ function recordHeart() {
 function Sidebar() {
   const [theme, setTheme] = useState(() => localStorage.getItem('playfool_theme') || 'dark');
   const [showSupport, setShowSupport] = useState(false);
+  const [hasHearted, setHasHearted] = useState(false); // Session-only: red during this run, resets on next launch
+  const [updateStatus, setUpdateStatus] = useState(null); // 'checking' | 'up-to-date' | 'found' | 'error'
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('playfool_theme', theme);
   }, [theme]);
 
+  // Listen for update-check feedback from UpdateChecker
+  useEffect(() => {
+    const handler = (e) => {
+      setUpdateStatus(e.detail?.status || null);
+      // Auto-clear transient statuses after a few seconds
+      if (e.detail?.status === 'up-to-date' || e.detail?.status === 'error' || e.detail?.status === 'found') {
+        setTimeout(() => setUpdateStatus(null), 4000);
+      }
+    };
+    window.addEventListener('playfool:update-status', handler);
+    return () => window.removeEventListener('playfool:update-status', handler);
+  }, []);
+
   const toggleTheme = () => setTheme(t => t === 'dark' ? 'light' : 'dark');
+
+  const onHeartClick = () => {
+    // Open modal; heart is only counted if user clicks "Yes, I love it!"
+    setShowSupport(true);
+  };
+
+  const handleLike = () => {
+    recordHeart();
+    setHasHearted(true);
+  };
+
+  const onVersionClick = () => {
+    // Bypass the 24h cache and force an update check
+    localStorage.removeItem('playfool_update_check');
+    window.dispatchEvent(new CustomEvent('playfool:check-update'));
+  };
+
+  const versionLabel = (() => {
+    if (updateStatus === 'checking') return 'Checking...';
+    if (updateStatus === 'up-to-date') return 'Up to date ✓';
+    if (updateStatus === 'error') return 'Check failed';
+    if (updateStatus === 'found') return 'Update ready!';
+    return `v${APP_VERSION}`;
+  })();
 
   return (
     <aside className={styles.sidebar}>
@@ -69,17 +108,32 @@ function Sidebar() {
           <button className={styles.themeToggle} onClick={toggleTheme} title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}>
             {theme === 'dark' ? <IoSunny /> : <IoMoon />}
           </button>
-          <button className={styles.heartBtn} onClick={() => { recordHeart(); setShowSupport(true); }} title="Support PlayFool">
+          <button
+            className={`${styles.heartBtn} ${hasHearted ? styles.heartBtnActive : ''}`}
+            onClick={onHeartClick}
+            title={hasHearted ? 'Thanks for the love! ❤️' : 'Support PlayFool'}
+          >
             <IoHeart />
           </button>
         </div>
         <div className={styles.trademarkRow}>
           <span className={styles.trademark}>Made by PullFool</span>
-          <span className={styles.version}>v{APP_VERSION}</span>
+          <button
+            className={styles.version}
+            onClick={onVersionClick}
+            title="Check for updates"
+          >
+            {versionLabel}
+          </button>
         </div>
       </div>
 
-      <SupportModal open={showSupport} onClose={() => setShowSupport(false)} />
+      <SupportModal
+        open={showSupport}
+        alreadyHearted={hasHearted}
+        onClose={() => setShowSupport(false)}
+        onLike={handleLike}
+      />
     </aside>
   );
 }

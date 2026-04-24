@@ -11,49 +11,68 @@ function UpdateChecker() {
   const [downloadState, setDownloadState] = useState('idle'); // idle, downloading, ready, error
   const [downloadProgress, setDownloadProgress] = useState(0);
 
+  const checkForUpdate = async ({ manual = false } = {}) => {
+    try {
+      if (manual) {
+        window.dispatchEvent(new CustomEvent('playfool:update-status', { detail: { status: 'checking' } }));
+      }
+
+      const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`);
+      if (!res.ok) {
+        if (manual) window.dispatchEvent(new CustomEvent('playfool:update-status', { detail: { status: 'error' } }));
+        return;
+      }
+      const data = await res.json();
+
+      localStorage.setItem('playfool_update_check', String(Date.now()));
+
+      const latestVersion = (data.tag_name || '').replace(/^v/, '');
+      const hasUpdate = latestVersion && latestVersion !== APP_VERSION && isNewer(latestVersion, APP_VERSION);
+
+      if (hasUpdate) {
+        const setupAsset = (data.assets || []).find(a =>
+          a.name.toLowerCase().includes('setup') && a.name.endsWith('.exe')
+        );
+
+        const info = {
+          version: latestVersion,
+          url: data.html_url,
+          body: data.body || '',
+          downloadUrl: setupAsset ? setupAsset.browser_download_url : null,
+          fileName: setupAsset ? setupAsset.name : null,
+        };
+        setUpdateInfo(info);
+        setDismissed(false);
+
+        if (manual) {
+          window.dispatchEvent(new CustomEvent('playfool:update-status', { detail: { status: 'found', version: latestVersion } }));
+        }
+
+        const isWindows = navigator.userAgent.toLowerCase().includes('windows');
+        if (isWindows && info.downloadUrl) {
+          startBackgroundDownload(info);
+        }
+      } else if (manual) {
+        window.dispatchEvent(new CustomEvent('playfool:update-status', { detail: { status: 'up-to-date' } }));
+      }
+    } catch (e) {
+      if (manual) window.dispatchEvent(new CustomEvent('playfool:update-status', { detail: { status: 'error' } }));
+    }
+  };
+
   useEffect(() => {
     const lastCheck = localStorage.getItem('playfool_update_check');
     const now = Date.now();
 
-    // Only check once per day
-    if (lastCheck && now - Number(lastCheck) < CHECK_INTERVAL) return;
+    // Auto-check once per day
+    if (!lastCheck || now - Number(lastCheck) >= CHECK_INTERVAL) {
+      checkForUpdate();
+    }
 
-    const checkForUpdate = async () => {
-      try {
-        const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`);
-        if (!res.ok) return;
-        const data = await res.json();
-
-        localStorage.setItem('playfool_update_check', String(now));
-
-        const latestVersion = (data.tag_name || '').replace(/^v/, '');
-        if (latestVersion && latestVersion !== APP_VERSION && isNewer(latestVersion, APP_VERSION)) {
-          // Find the setup exe in assets
-          const setupAsset = (data.assets || []).find(a =>
-            a.name.toLowerCase().includes('setup') && a.name.endsWith('.exe')
-          );
-
-          const info = {
-            version: latestVersion,
-            url: data.html_url,
-            body: data.body || '',
-            downloadUrl: setupAsset ? setupAsset.browser_download_url : null,
-            fileName: setupAsset ? setupAsset.name : null,
-          };
-          setUpdateInfo(info);
-
-          // Auto-download in background on Windows so the user only has to click once (install)
-          const isWindows = navigator.userAgent.toLowerCase().includes('windows');
-          if (isWindows && info.downloadUrl) {
-            startBackgroundDownload(info);
-          }
-        }
-      } catch (e) {
-        // Silently fail
-      }
-    };
-
-    checkForUpdate();
+    // Listen for manual "check now" requests from the sidebar
+    const handler = () => checkForUpdate({ manual: true });
+    window.addEventListener('playfool:check-update', handler);
+    return () => window.removeEventListener('playfool:check-update', handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
