@@ -92,11 +92,10 @@ function Videos() {
     } catch (e) {}
   }, []);
 
+  // Reload videos every time the page mounts so new YouTube downloads always show up
   useEffect(() => {
-    if (!initialVidsLoaded) {
-      loadVideos();
-      loadCachedVideoScan();
-    }
+    loadVideos();
+    if (!initialVidsLoaded) loadCachedVideoScan();
   }, [loadVideos, loadCachedVideoScan]);
 
   // Refresh videos when a MP4 download finishes on the YouTube tab

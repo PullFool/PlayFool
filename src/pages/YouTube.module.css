@@ -96,6 +96,23 @@
 .qualitySelect:hover { border-color: var(--green); }
 .qualitySelect:focus { border-color: var(--green); }
 
+/* Inline spinner for download buttons */
+.spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(0,0,0,0.3);
+  border-top-color: #000;
+  border-radius: 50%;
+  animation: dlSpin 0.7s linear infinite;
+  margin-right: 4px;
+}
+.mp4Btn .spinner {
+  border-color: rgba(255,255,255,0.3);
+  border-top-color: currentColor;
+}
+@keyframes dlSpin { to { transform: rotate(360deg); } }
+
 /* Loader overlay - scoped to page, not full viewport */
 .loaderOverlay {
   position: absolute; top: 0; left: 0; right: 0; bottom: 0;

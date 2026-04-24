@@ -68,11 +68,10 @@ function LocalMusic() {
     } catch (e) {}
   }, []);
 
+  // Reload library every time the page mounts so new YouTube downloads always show up
   useEffect(() => {
-    if (!initialLoaded) {
-      loadLibrary();
-      loadCachedScan();
-    }
+    loadLibrary();
+    if (!initialLoaded) loadCachedScan();
   }, [loadLibrary, loadCachedScan]);
 
   // Refresh library when a download finishes on the YouTube tab
@@ -148,20 +147,6 @@ function LocalMusic() {
             <IoRefresh />
           </button>
         </div>
-      </div>
-
-      <div className="upload-area"
-        onClick={() => fileInputRef.current?.click()}
-        onDrop={handleDrop}
-        onDragOver={(e) => e.preventDefault()}
-      >
-        <IoCloudUpload className="icon" />
-        <p>Drop music files here or click to upload</p>
-        <p className="hint">Supports MP3, M4A, WAV, OGG, FLAC</p>
-        <input ref={fileInputRef} type="file" accept="audio/*" multiple
-          style={{ display: 'none' }}
-          onChange={(e) => handleFiles(e.target.files)}
-        />
       </div>
 
       {loading ? (
