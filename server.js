@@ -1020,9 +1020,31 @@ app.get('/api/localfile', (req, res) => {
 
   const ext = path.extname(resolved).toLowerCase();
   const mime = MIME_TYPES[ext] || 'application/octet-stream';
-  res.setHeader('Content-Type', mime);
-  res.setHeader('Accept-Ranges', 'bytes');
-  fs.createReadStream(resolved).pipe(res);
+  const stat = fs.statSync(resolved);
+  const fileSize = stat.size;
+  const range = req.headers.range;
+
+  if (range) {
+    // Support seek via HTTP range requests (browsers send these when user seeks)
+    const parts = range.replace(/bytes=/, '').split('-');
+    const start = parseInt(parts[0], 10);
+    const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+    const chunkSize = end - start + 1;
+    res.writeHead(206, {
+      'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+      'Accept-Ranges': 'bytes',
+      'Content-Length': chunkSize,
+      'Content-Type': mime,
+    });
+    fs.createReadStream(resolved, { start, end }).pipe(res);
+  } else {
+    res.writeHead(200, {
+      'Content-Length': fileSize,
+      'Content-Type': mime,
+      'Accept-Ranges': 'bytes',
+    });
+    fs.createReadStream(resolved).pipe(res);
+  }
 });
 
 // API: Scan PC for video files
@@ -1290,9 +1312,7 @@ app.post('/api/update/install', (req, res) => {
 
     // Quit app after launching installer
     setTimeout(() => {
-      if (typeof nw !== 'undefined') {
-        nw.App.quit();
-      }
+      if (typeof nw !== 'undefined') { try { nw.App.quit(); } catch(e) {} }
       process.exit(0);
     }, 1000);
   }, 500);

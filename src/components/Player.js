@@ -1,6 +1,6 @@
 import React, { useRef, useCallback, useState } from 'react';
 import { usePlayer } from '../context/PlayerContext';
-import { IoPlay, IoPause, IoPlaySkipForward, IoPlaySkipBack, IoVolumeHigh, IoVolumeMute, IoMusicalNotes, IoDocumentText, IoVideocam, IoOptions, IoContract, IoExpand, IoList } from 'react-icons/io5';
+import { IoPlay, IoPause, IoPlaySkipForward, IoPlaySkipBack, IoPlayForward, IoPlayBack, IoVolumeHigh, IoVolumeMute, IoMusicalNotes, IoDocumentText, IoVideocam, IoOptions, IoContract, IoExpand, IoList } from 'react-icons/io5';
 import styles from './Player.module.css';
 
 function Player({ showLyrics, onToggleLyrics, showEqualizer, onToggleEqualizer, showQueue, onToggleQueue }) {
@@ -55,11 +55,27 @@ function Player({ showLyrics, onToggleLyrics, showEqualizer, onToggleEqualizer, 
         </div>
 
         <div className={styles.controls}>
-          <button className={styles.controlBtn} onClick={skipPrev} disabled={!currentSong}><IoPlaySkipBack /></button>
+          <button className={styles.controlBtn} onClick={skipPrev} disabled={!currentSong} title="Previous track"><IoPlaySkipBack /></button>
+          <button
+            className={styles.controlBtn}
+            onClick={() => seekTo(Math.max(0, currentTime - 10))}
+            disabled={!currentSong}
+            title="Rewind 10 seconds"
+          >
+            <IoPlayBack />
+          </button>
           <button className={styles.playBtn} onClick={togglePlayPause} disabled={!currentSong}>
             {isPlaying ? <IoPause /> : <IoPlay />}
           </button>
-          <button className={styles.controlBtn} onClick={skipNext} disabled={!currentSong}><IoPlaySkipForward /></button>
+          <button
+            className={styles.controlBtn}
+            onClick={() => seekTo(duration > 0 ? Math.min(duration, currentTime + 10) : currentTime + 10)}
+            disabled={!currentSong}
+            title="Forward 10 seconds"
+          >
+            <IoPlayForward />
+          </button>
+          <button className={styles.controlBtn} onClick={skipNext} disabled={!currentSong} title="Next track"><IoPlaySkipForward /></button>
         </div>
 
         <div className={styles.right}>

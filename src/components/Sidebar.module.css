@@ -76,6 +76,13 @@
   gap: 8px;
 }
 
+.bottomBtns {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+}
+
 .themeToggle {
   background: var(--bg-surface);
   border: 1px solid var(--border);
@@ -92,6 +99,27 @@
   transition: all 0.2s;
 }
 .themeToggle:hover { color: var(--green); border-color: var(--green); }
+
+.heartBtn {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 6px;
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+.heartBtn:hover {
+  color: #ff4b6e;
+  border-color: #ff4b6e;
+  transform: scale(1.1);
+}
 
 .trademarkRow {
   display: flex;

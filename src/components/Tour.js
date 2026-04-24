@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import styles from './Tour.module.css';
 
-const APP_VERSION = '1.9.7';
+const APP_VERSION = '1.9.8';
 
 const welcomeSteps = [
   {
@@ -59,33 +59,33 @@ const welcomeSteps = [
 const updateSteps = [
   {
     title: `What's New in v${APP_VERSION}`,
-    description: 'PlayFool just got more polish and safer file management.',
+    description: 'Better playback controls, smarter library, and a way to show love.',
     icon: '🆕',
   },
   {
-    title: 'Delete Files from Your Library',
-    description: 'Hover any song or video and click the red trash icon to remove its file from your computer. Deleted files go to your Recycle Bin, so you can always restore them if you change your mind.',
+    title: 'Rewind & Fast Forward',
+    description: 'Jump 10 seconds back or forward in the currently playing track with the new ⏪ and ⏩ buttons next to Play.',
+    icon: '⏩',
+  },
+  {
+    title: 'Seek Anywhere',
+    description: 'Click anywhere on the progress bar to jump to that point — works for downloaded songs and scanned files alike.',
+    icon: '🎯',
+  },
+  {
+    title: 'Auto-refresh Library',
+    description: 'Downloaded a song or video from YouTube? It now appears in My Music / My Videos instantly — no more manual refresh.',
+    icon: '🔄',
+  },
+  {
+    title: 'Delete to Recycle Bin',
+    description: 'The trash icon on songs and videos now moves files safely to your Recycle Bin. Restore anytime if you change your mind.',
     icon: '🗑️',
   },
   {
-    title: 'Themed Dialogs',
-    description: 'Confirmations and error popups now match PlayFool\'s dark theme — no more jarring system dialogs.',
-    icon: '🎨',
-  },
-  {
-    title: 'Smoother Search + Video',
-    description: 'The search loading overlay no longer covers the video panel while you\'re watching. Enjoy YouTube previews without interruption.',
-    icon: '🔍',
-  },
-  {
-    title: 'No More Double Sound',
-    description: 'Fixed the double-audio issue on YouTube previews so you get clean playback every time.',
-    icon: '🔊',
-  },
-  {
-    title: 'Cleaner Exit + Silent Error Reports',
-    description: 'The app now fully cleans up background processes when you close it. Any crashes are automatically reported to us so we can ship fixes faster — no action needed from you.',
-    icon: '🛡️',
+    title: 'Show Some Love ❤️',
+    description: 'Enjoying PlayFool? Click the ❤️ heart in the sidebar to show support. It\'s completely free — just a click to let me know you care.',
+    icon: '❤️',
   },
   {
     title: 'Enjoy the update!',
