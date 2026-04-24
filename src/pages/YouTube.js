@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { usePlayer } from '../context/PlayerContext';
-import { IoSearch, IoDownload, IoMusicalNotes, IoPlay, IoPause, IoShuffle, IoVideocam, IoClose, IoTime, IoTrash } from 'react-icons/io5';
+import { IoSearch, IoDownload, IoMusicalNotes, IoPlay, IoPause, IoShuffle, IoVideocam, IoClose, IoTime, IoTrash, IoCheckmarkCircle } from 'react-icons/io5';
 import styles from './YouTube.module.css';
 
 const API_BASE = process.env.REACT_APP_API_URL;
@@ -12,7 +12,7 @@ let savedResults = [];
 let savedDownloaded = [];
 
 function YouTube() {
-  const { playSong, shufflePlay, currentSong, isPlaying, downloadProgress, setDownloadProgress } = usePlayer();
+  const { playSong, shufflePlay, currentSong, isPlaying } = usePlayer();
   const [query, setQuery] = useState(savedQuery);
   const [results, setResults] = useState(savedResults);
   const [searching, setSearching] = useState(false);
@@ -20,8 +20,8 @@ function YouTube() {
   const [error, setError] = useState('');
   const [previewingId, setPreviewingId] = useState(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
-  const [downloadQueue, setDownloadQueue] = useState([]);
-  const [isDownloading, setIsDownloading] = useState(false);
+  // Map of `${videoId}:${type}` -> 'downloading' | 'done' — enables parallel downloads with per-button progress
+  const [downloadState, setDownloadState] = useState({});
   const [videoModal, setVideoModal] = useState(null);
   const [qualities, setQualities] = useState([]);
   const [selectedQuality, setSelectedQuality] = useState('720');
@@ -57,6 +57,8 @@ function YouTube() {
     setShowHistory(false);
     setSearching(true);
     setError('');
+    // Clear download tags from previous results — fresh search, fresh buttons
+    setDownloadState({});
     addToHistory(q);
     try {
       const res = await fetch(`${API_BASE}/search?q=${encodeURIComponent(q)}`);
@@ -70,65 +72,64 @@ function YouTube() {
     }
   };
 
-  const queueDownload = (video, type = 'mp3', quality = null) => {
-    setDownloadQueue(prev => [...prev, { video, type, quality, id: Date.now() }]);
-  };
+  // Fire a download in parallel. Per-button state shows spinner → checkmark.
+  const startDownload = async (video, type, quality = null) => {
+    const key = `${video.id}:${type}`;
+    // Prevent duplicate downloads — skip if already downloading or already done
+    if (downloadState[key] === 'downloading' || downloadState[key] === 'done') return;
+    setDownloadState(prev => ({ ...prev, [key]: 'downloading' }));
 
-  // Process download queue
-  useEffect(() => {
-    if (isDownloading || downloadQueue.length === 0) return;
+    try {
+      const endpoint = type === 'mp4' ? `${API_BASE}/video/download` : `${API_BASE}/download`;
+      const body = type === 'mp4'
+        ? { url: video.url, title: video.title, quality, thumbnail: video.thumbnail }
+        : { url: video.url, title: video.title, thumbnail: video.thumbnail };
 
-    const processNext = async () => {
-      setIsDownloading(true);
-      const item = downloadQueue[0];
-      const { video, type, quality } = item;
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
 
-      const label = type === 'mp4' ? `MP4 (${quality || 'best'}p)` : 'MP3';
-      setDownloadProgress({ title: video.title, percent: 0, status: `Downloading ${label}... (${downloadQueue.length} in queue)` });
-
-      try {
-        const endpoint = type === 'mp4' ? `${API_BASE}/video/download` : `${API_BASE}/download`;
-        const body = type === 'mp4'
-          ? { url: video.url, title: video.title, quality, thumbnail: video.thumbnail }
-          : { url: video.url, title: video.title, thumbnail: video.thumbnail };
-
-        const res = await fetch(endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
+      if (data.error) {
+        setError(data.error);
+        setDownloadState(prev => {
+          const next = { ...prev };
+          delete next[key];
+          return next;
         });
-        const data = await res.json();
-        if (data.error) setError(data.error);
-        else if (type === 'mp3') {
-          setDownloadedSongs(prev => [{
-            id: `yt-${Date.now()}`, title: data.title || video.title,
-            artist: video.channel || 'YouTube', url: `${SERVER_BASE}/${data.file}`,
-            cover: video.thumbnail, source: 'youtube',
-          }, ...prev]);
-          // Notify My Music page to refresh its library so new download shows up there too
-          window.dispatchEvent(new CustomEvent('playfool:library-changed', { detail: { kind: 'music' } }));
-        } else if (type === 'mp4') {
-          // Notify Videos page to refresh
-          window.dispatchEvent(new CustomEvent('playfool:library-changed', { detail: { kind: 'video' } }));
-        }
-      } catch (e) {
-        setError('Download failed: ' + e.message);
+        return;
       }
 
-      setDownloadQueue(prev => prev.slice(1));
-      setIsDownloading(false);
-      if (downloadQueue.length <= 1) setDownloadProgress(null);
-    };
+      if (type === 'mp3') {
+        setDownloadedSongs(prev => [{
+          id: `yt-${Date.now()}`, title: data.title || video.title,
+          artist: video.channel || 'YouTube', url: `${SERVER_BASE}/${data.file}`,
+          cover: video.thumbnail, source: 'youtube',
+        }, ...prev]);
+        window.dispatchEvent(new CustomEvent('playfool:library-changed', { detail: { kind: 'music' } }));
+      } else if (type === 'mp4') {
+        window.dispatchEvent(new CustomEvent('playfool:library-changed', { detail: { kind: 'video' } }));
+      }
 
-    processNext();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [downloadQueue, isDownloading]);
-
-  const downloadMp3 = (video) => {
-    queueDownload(video, 'mp3');
+      // Keep 'Done' tag visible until the next search
+      setDownloadState(prev => ({ ...prev, [key]: 'done' }));
+    } catch (e) {
+      setError('Download failed: ' + e.message);
+      setDownloadState(prev => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+    }
   };
 
+  const downloadMp3 = (video) => startDownload(video, 'mp3');
+
   const openVideoDownload = async (video) => {
+    const key = `${video.id}:mp4`;
+    if (downloadState[key] === 'downloading' || downloadState[key] === 'done') return;
     setVideoModal(video);
     setLoadingQualities(true);
     setQualities([]);
@@ -156,7 +157,7 @@ function YouTube() {
 
   const downloadMp4 = () => {
     if (!videoModal) return;
-    queueDownload(videoModal, 'mp4', selectedQuality);
+    startDownload(videoModal, 'mp4', selectedQuality);
     setVideoModal(null);
   };
 
@@ -241,16 +242,6 @@ function YouTube() {
 
       {error && <div className={styles.errorMsg}>{error}</div>}
 
-      {downloadProgress && (
-        <div className="download-toast">
-          <div className="title">{downloadProgress.title}</div>
-          <div className="progress-bar">
-            <div className="progress-fill" style={{ width: `${downloadProgress.percent}%` }} />
-          </div>
-          <div className="status">{downloadProgress.status || 'Downloading...'}</div>
-        </div>
-      )}
-
       {results.length > 0 && (
         <>
           <h2 className="section-title">Search Results</h2>
@@ -279,12 +270,48 @@ function YouTube() {
                   </div>
 
                   <div className={styles.downloadBtns}>
-                    <button onClick={() => downloadMp3(video)} className="btn-sm btn-primary">
-                      <IoDownload /> MP3
-                    </button>
-                    <button onClick={() => openVideoDownload(video)} className={`btn-sm ${styles.mp4Btn}`}>
-                      <IoVideocam /> MP4
-                    </button>
+                    {(() => {
+                      const mp3State = downloadState[`${video.id}:mp3`];
+                      const locked = mp3State === 'downloading' || mp3State === 'done';
+                      return (
+                        <button
+                          onClick={() => downloadMp3(video)}
+                          className="btn-sm btn-primary"
+                          disabled={locked}
+                          style={mp3State === 'done' ? { background: '#1db954', cursor: 'default', opacity: 1 } : undefined}
+                          title={mp3State === 'done' ? 'Already downloaded' : 'Download as MP3'}
+                        >
+                          {mp3State === 'downloading' ? (
+                            <><span className={styles.spinner} /> Downloading...</>
+                          ) : mp3State === 'done' ? (
+                            <><IoCheckmarkCircle /> Done</>
+                          ) : (
+                            <><IoDownload /> MP3</>
+                          )}
+                        </button>
+                      );
+                    })()}
+                    {(() => {
+                      const mp4State = downloadState[`${video.id}:mp4`];
+                      const locked = mp4State === 'downloading' || mp4State === 'done';
+                      return (
+                        <button
+                          onClick={() => openVideoDownload(video)}
+                          className={`btn-sm ${styles.mp4Btn}`}
+                          disabled={locked}
+                          style={mp4State === 'done' ? { borderColor: '#1db954', color: '#1db954', cursor: 'default', opacity: 1 } : undefined}
+                          title={mp4State === 'done' ? 'Already downloaded' : 'Download as MP4'}
+                        >
+                          {mp4State === 'downloading' ? (
+                            <><span className={styles.spinner} /> Downloading...</>
+                          ) : mp4State === 'done' ? (
+                            <><IoCheckmarkCircle /> Done</>
+                          ) : (
+                            <><IoVideocam /> MP4</>
+                          )}
+                        </button>
+                      );
+                    })()}
                   </div>
                 </li>
               );

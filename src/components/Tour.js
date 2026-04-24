@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import styles from './Tour.module.css';
 
-const APP_VERSION = '1.9.8';
+const APP_VERSION = '1.9.9';
 
 const welcomeSteps = [
   {
@@ -59,33 +59,33 @@ const welcomeSteps = [
 const updateSteps = [
   {
     title: `What's New in v${APP_VERSION}`,
-    description: 'Better playback controls, smarter library, and a way to show love.',
+    description: 'Faster downloads, more search results, and cleaner library.',
     icon: '🆕',
   },
   {
-    title: 'Rewind & Fast Forward',
-    description: 'Jump 10 seconds back or forward in the currently playing track with the new ⏪ and ⏩ buttons next to Play.',
-    icon: '⏩',
+    title: 'Parallel Downloads',
+    description: 'You can now download multiple songs and videos at the same time! Click MP3 or MP4 on any result and hit more without waiting — they all download in parallel.',
+    icon: '⚡',
   },
   {
-    title: 'Seek Anywhere',
-    description: 'Click anywhere on the progress bar to jump to that point — works for downloaded songs and scanned files alike.',
-    icon: '🎯',
+    title: 'Download Progress on Each Button',
+    description: 'Each download shows its own spinner right on the button. When it finishes, the button turns green with a ✓ Done tag so you know which ones you already grabbed.',
+    icon: '✅',
   },
   {
-    title: 'Auto-refresh Library',
-    description: 'Downloaded a song or video from YouTube? It now appears in My Music / My Videos instantly — no more manual refresh.',
+    title: '15 Results per Search',
+    description: 'YouTube search now returns 15 results per query (was 5) — more to pick from without searching again.',
+    icon: '🔍',
+  },
+  {
+    title: 'Smarter Library Refresh',
+    description: 'My Music and My Videos now refresh automatically every time you open them. Your new downloads always appear without clicking refresh.',
     icon: '🔄',
   },
   {
-    title: 'Delete to Recycle Bin',
-    description: 'The trash icon on songs and videos now moves files safely to your Recycle Bin. Restore anytime if you change your mind.',
-    icon: '🗑️',
-  },
-  {
-    title: 'Show Some Love ❤️',
-    description: 'Enjoying PlayFool? Click the ❤️ heart in the sidebar to show support. It\'s completely free — just a click to let me know you care.',
-    icon: '❤️',
+    title: 'Cleaner My Music',
+    description: 'Removed the drag-and-drop upload box for a cleaner library view. Use the Scan PC button or YouTube downloads to add music.',
+    icon: '🎨',
   },
   {
     title: 'Enjoy the update!',
