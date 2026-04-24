@@ -99,6 +99,15 @@ function Videos() {
     }
   }, [loadVideos, loadCachedVideoScan]);
 
+  // Refresh videos when a MP4 download finishes on the YouTube tab
+  useEffect(() => {
+    const handler = (e) => {
+      if (!e.detail || e.detail.kind === 'video') loadVideos();
+    };
+    window.addEventListener('playfool:library-changed', handler);
+    return () => window.removeEventListener('playfool:library-changed', handler);
+  }, [loadVideos]);
+
   // Merge and deduplicate
   const seen = new Set();
   const allVideos = [];
