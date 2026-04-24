@@ -75,6 +75,15 @@ function LocalMusic() {
     }
   }, [loadLibrary, loadCachedScan]);
 
+  // Refresh library when a download finishes on the YouTube tab
+  useEffect(() => {
+    const handler = (e) => {
+      if (!e.detail || e.detail.kind === 'music') loadLibrary();
+    };
+    window.addEventListener('playfool:library-changed', handler);
+    return () => window.removeEventListener('playfool:library-changed', handler);
+  }, [loadLibrary]);
+
   const handleScan = useCallback(async () => {
     setScanning(true);
     try {

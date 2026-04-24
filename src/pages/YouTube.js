@@ -105,6 +105,11 @@ function YouTube() {
             artist: video.channel || 'YouTube', url: `${SERVER_BASE}/${data.file}`,
             cover: video.thumbnail, source: 'youtube',
           }, ...prev]);
+          // Notify My Music page to refresh its library so new download shows up there too
+          window.dispatchEvent(new CustomEvent('playfool:library-changed', { detail: { kind: 'music' } }));
+        } else if (type === 'mp4') {
+          // Notify Videos page to refresh
+          window.dispatchEvent(new CustomEvent('playfool:library-changed', { detail: { kind: 'video' } }));
         }
       } catch (e) {
         setError('Download failed: ' + e.message);
