@@ -1281,7 +1281,7 @@ app.post('/api/update/download', async (req, res) => {
           });
 
           file.on('error', (err) => {
-            fs.unlinkSync(filePath);
+            try { fs.unlinkSync(filePath); } catch(e) { /* file locked or already gone — ignore */ }
             updateProgress.error = err.message;
             reject(err);
           });
