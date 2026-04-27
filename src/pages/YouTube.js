@@ -255,7 +255,7 @@ function YouTube() {
           <option value="30">30 results</option>
           <option value="50">50 results</option>
         </select>
-        <button onClick={search} disabled={searching} className="btn btn-primary">
+        <button onClick={() => search()} disabled={searching} className="btn btn-primary">
           <IoSearch /> {searching ? 'Searching...' : 'Search'}
         </button>
       </div>
