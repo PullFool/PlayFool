@@ -10,6 +10,7 @@ function UpdateChecker() {
   const [dismissed, setDismissed] = useState(false);
   const [downloadState, setDownloadState] = useState('idle'); // idle, downloading, ready, error
   const [downloadProgress, setDownloadProgress] = useState(0);
+  const downloadStartedRef = React.useRef(false);
 
   const checkForUpdate = async ({ manual = false } = {}) => {
     try {
@@ -77,35 +78,52 @@ function UpdateChecker() {
   }, []);
 
   const startBackgroundDownload = async (info) => {
+    // Guard against double-start: auto-download on launch + a manual click would
+    // race two POSTs to /api/update/download, the second of which resets the
+    // 'done' flag and the polling never sees completion.
+    if (downloadStartedRef.current) return;
+    downloadStartedRef.current = true;
+
     setDownloadState('downloading');
     setDownloadProgress(0);
 
+    let pollProgress;
+    const finish = (state) => {
+      if (pollProgress) clearInterval(pollProgress);
+      setDownloadState(state);
+    };
+
     try {
-      // Kick off the download on the backend
+      // Use the download response itself as a completion signal so we don't
+      // depend solely on polling picking up the 'done' flag.
       fetch('/api/update/download', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: info.downloadUrl, fileName: info.fileName }),
-      }).catch(() => {});
+      })
+        .then((r) => r.json())
+        .then((data) => {
+          if (data && data.success) {
+            setDownloadProgress(100);
+            finish('ready');
+          } else if (data && data.error) {
+            finish('error');
+          }
+        })
+        .catch(() => {});
 
-      // Poll progress until done
-      const pollProgress = setInterval(async () => {
+      // Polling is a backup signal for progress + done while the POST is open
+      pollProgress = setInterval(async () => {
         try {
           const prog = await fetch('/api/update/progress');
           const data = await prog.json();
           setDownloadProgress(data.percent || 0);
-          if (data.done) {
-            clearInterval(pollProgress);
-            setDownloadState('ready');
-          }
-          if (data.error) {
-            clearInterval(pollProgress);
-            setDownloadState('error');
-          }
+          if (data.done) finish('ready');
+          if (data.error) finish('error');
         } catch(e) {}
       }, 1000);
     } catch (e) {
-      setDownloadState('error');
+      finish('error');
     }
   };
 
