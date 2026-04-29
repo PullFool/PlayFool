@@ -136,9 +136,18 @@ export function AudioProvider({ children }) {
 
   const shufflePlay = useCallback((songList) => {
     if (songList.length === 0) return;
-    const shuffled = [...songList].sort(() => Math.random() - 0.5);
-    setShuffle(true);
-    playSong(shuffled, 0);
+    // Proper Fisher-Yates shuffle (uniform distribution; the previous
+    // sort(() => Math.random() - 0.5) was statistically biased).
+    const shuffled = [...songList];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    // Play the first song now and queue the rest. skipNext already prefers the
+    // queue over the songs list, so each track plays exactly once before any
+    // can repeat. The queue panel shows the upcoming order.
+    setQueue(shuffled.slice(1));
+    playSong([shuffled[0]], 0);
   }, [playSong]);
 
   const togglePlayPause = useCallback(() => {
