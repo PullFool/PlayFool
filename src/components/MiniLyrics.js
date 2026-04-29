@@ -40,8 +40,15 @@ function MiniLyrics({ hasVideo }) {
     return () => { cancelled = true; };
   }, [currentSong]);
 
-  // Tell the server to resize the window when the user expands/collapses
+  // Tell the server to resize the window when the user expands/collapses.
+  // Skip the very first run so just rendering the (hidden) component on
+  // app launch doesn't trigger a resize that shrinks the window.
+  const skipFirstResize = useRef(true);
   useEffect(() => {
+    if (skipFirstResize.current) {
+      skipFirstResize.current = false;
+      return;
+    }
     fetch('/api/mini-resize', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
