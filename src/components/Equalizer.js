@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { subscribe } from '../utils/playerBroadcast';
 import styles from './Equalizer.module.css';
 
 // 10-band hi-fi EQ (Winamp/Foobar standard frequencies)
@@ -28,7 +29,9 @@ const PRESETS = {
   jazz:   [ 4,  3,  1,  0,  1,  3,  4,  3,  2,  3],
 };
 
-function Equalizer({ onClose }) {
+// `visible=false` keeps the audio graph alive (filters connected) but hides the UI
+// so popup windows can apply gain changes even when the user closed the inline panel.
+function Equalizer({ onClose, visible = true }) {
   const [gains, setGains] = useState(() => {
     const saved = localStorage.getItem('playfool_eq');
     if (saved) {
@@ -117,6 +120,20 @@ function Equalizer({ onClose }) {
     setGains(newGains);
     setActivePreset('');
   };
+
+  // Apply gain changes broadcast from popup EQ window
+  useEffect(() => {
+    return subscribe((msg) => {
+      if (msg?.type === 'action' && msg.name === 'setEqGains' && Array.isArray(msg.args)) {
+        if (msg.args.length === BANDS.length) {
+          setGains(msg.args);
+          setActivePreset('');
+        }
+      }
+    });
+  }, []);
+
+  if (!visible) return null;
 
   const applyPreset = (name) => {
     setGains([...PRESETS[name]]);

@@ -13,6 +13,59 @@ function Player({ showLyrics, onToggleLyrics, showEqualizer, onToggleEqualizer, 
 
   const seekBarRef = useRef(null);
   const [isMini, setIsMini] = useState(false);
+  // Track open popup windows so we can close them when leaving mini mode
+  const popupRefs = useRef({}); // { lyrics, equalizer, queue } -> NW.js Window
+
+  // Open or focus a popup window for the given panel.
+  // Each popup loads the same React app at #/popup/<type> via the local server.
+  const POPUP_SIZES = {
+    lyrics: { width: 380, height: 500 },
+    equalizer: { width: 660, height: 360 },
+    queue: { width: 380, height: 520 },
+  };
+  const POPUP_TITLES = {
+    lyrics: 'PlayFool — Lyrics',
+    equalizer: 'PlayFool — Equalizer',
+    queue: 'PlayFool — Queue',
+  };
+  const openPopup = (type) => {
+    const existing = popupRefs.current[type];
+    if (existing) {
+      try { existing.focus(); return; } catch (e) {}
+    }
+    if (typeof window.nw === 'undefined' || !window.nw.Window) {
+      // Not running in NW.js — fall back to toggling the inline panel
+      if (type === 'lyrics') onToggleLyrics();
+      else if (type === 'equalizer') onToggleEqualizer();
+      else if (type === 'queue') onToggleQueue();
+      return;
+    }
+    const size = POPUP_SIZES[type];
+    const url = `${window.location.origin}/#/popup/${type}`;
+    window.nw.Window.open(url, {
+      title: POPUP_TITLES[type],
+      width: size.width,
+      height: size.height,
+      min_width: 300,
+      min_height: 240,
+      resizable: true,
+      always_on_top: true,
+      frame: true,
+      icon: 'public/icon.png',
+    }, (newWin) => {
+      if (!newWin) return;
+      popupRefs.current[type] = newWin;
+      newWin.on('closed', () => { popupRefs.current[type] = null; });
+    });
+  };
+
+  // Close all popups when leaving mini mode
+  const closeAllPopups = () => {
+    Object.entries(popupRefs.current).forEach(([key, win]) => {
+      if (win) { try { win.close(true); } catch (e) {} }
+      popupRefs.current[key] = null;
+    });
+  };
 
   const formatTime = (t) => {
     if (!t || isNaN(t)) return '0:00';
@@ -95,7 +148,7 @@ function Player({ showLyrics, onToggleLyrics, showEqualizer, onToggleEqualizer, 
           {currentSong && (
             <button
               className={`${styles.lyricsBtn} ${showLyrics ? styles.lyricsBtnActive : ''}`}
-              onClick={onToggleLyrics}
+              onClick={() => isMini ? openPopup('lyrics') : onToggleLyrics()}
               title="Lyrics"
             >
               <IoDocumentText />
@@ -103,14 +156,14 @@ function Player({ showLyrics, onToggleLyrics, showEqualizer, onToggleEqualizer, 
           )}
           <button
             className={`${styles.lyricsBtn} ${showEqualizer ? styles.lyricsBtnActive : ''}`}
-            onClick={onToggleEqualizer}
+            onClick={() => isMini ? openPopup('equalizer') : onToggleEqualizer()}
             title="Equalizer"
           >
             <IoOptions />
           </button>
           <button
             className={`${styles.lyricsBtn} ${showQueue ? styles.lyricsBtnActive : ''}`}
-            onClick={onToggleQueue}
+            onClick={() => isMini ? openPopup('queue') : onToggleQueue()}
             title="Queue"
           >
             <IoList />
@@ -137,6 +190,15 @@ function Player({ showLyrics, onToggleLyrics, showEqualizer, onToggleEqualizer, 
                 } else {
                   appEl?.classList.remove('mini-mode');
                   setIsMini(false);
+                  // Closing mini mode: close any popups and reopen
+                  // the corresponding inline panels so the user keeps context.
+                  const hadLyrics = !!popupRefs.current.lyrics;
+                  const hadEq = !!popupRefs.current.equalizer;
+                  const hadQueue = !!popupRefs.current.queue;
+                  closeAllPopups();
+                  if (hadLyrics && !showLyrics) onToggleLyrics();
+                  if (hadEq && !showEqualizer) onToggleEqualizer();
+                  if (hadQueue && !showQueue) onToggleQueue();
                 }
               } catch(e) { console.error('Mini player error:', e); }
             }}

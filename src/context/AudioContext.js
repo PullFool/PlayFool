@@ -1,6 +1,9 @@
 import React, { createContext, useContext, useState, useRef, useCallback, useEffect } from 'react';
+import { subscribe, getChannel } from '../utils/playerBroadcast';
 
 const AudioContext = createContext();
+const POPUP_ROUTE_PREFIX = '#/popup/';
+const isPopupWindow = () => typeof window !== 'undefined' && window.location.hash.startsWith(POPUP_ROUTE_PREFIX);
 
 export function useAudio() {
   return useContext(AudioContext);
@@ -234,6 +237,62 @@ export function AudioProvider({ children }) {
     setQueue(prev => prev.filter((_, i) => i !== index));
     playSong([song], 0);
   }, [queue, playSong]);
+
+  // Single persistent BroadcastChannel for popup sync. Created once, lives
+  // for the app's lifetime in the main window. Popup windows skip this entirely.
+  const broadcastChRef = useRef(null);
+  useEffect(() => {
+    if (isPopupWindow()) return;
+    broadcastChRef.current = getChannel();
+    return () => { try { broadcastChRef.current?.close(); } catch (e) {} };
+  }, []);
+
+  // Push state to the channel whenever any tracked field changes.
+  useEffect(() => {
+    const ch = broadcastChRef.current;
+    if (!ch) return;
+    try {
+      ch.postMessage({
+        type: 'state',
+        payload: {
+          currentSong, currentTime, duration, isPlaying,
+          queue, volume, shuffle, repeat,
+        },
+      });
+    } catch (e) {}
+  }, [currentSong, currentTime, duration, isPlaying, queue, volume, shuffle, repeat]);
+
+  // Listen for actions sent from popup windows.
+  useEffect(() => {
+    if (isPopupWindow()) return;
+    const cleanup = subscribe((msg) => {
+      if (!msg) return;
+      if (msg.type === 'request-state') {
+        const ch = broadcastChRef.current;
+        if (ch) {
+          try {
+            ch.postMessage({
+              type: 'state',
+              payload: { currentSong, currentTime, duration, isPlaying, queue, volume, shuffle, repeat },
+            });
+          } catch (e) {}
+        }
+        return;
+      }
+      if (msg.type !== 'action') return;
+      switch (msg.name) {
+        case 'seek': seekTo(msg.args); break;
+        case 'skipNext': skipNext(); break;
+        case 'skipPrev': skipPrev(); break;
+        case 'togglePlayPause': togglePlayPause(); break;
+        case 'removeFromQueue': removeFromQueue(msg.args); break;
+        case 'playFromQueue': playFromQueue(msg.args); break;
+        default: break;
+      }
+    });
+    return cleanup;
+  }, [seekTo, skipNext, skipPrev, togglePlayPause, removeFromQueue, playFromQueue,
+      currentSong, currentTime, duration, isPlaying, queue, volume, shuffle, repeat]);
 
   const value = {
     songs, currentSong, currentIndex, isPlaying, currentTime, duration,

@@ -16,6 +16,7 @@ import YouTube from './pages/YouTube';
 import Videos from './pages/Videos';
 import Playlists from './pages/Playlists';
 import PlaylistDetail from './pages/PlaylistDetail';
+import PopupApp from './pages/PopupApp';
 import './App.css';
 
 // Keyboard shortcut handler component (needs to be inside PlayerProvider)
@@ -84,6 +85,25 @@ function App() {
   const [showQueue, setShowQueue] = useState(false);
   const [tourDone, setTourDone] = useState(false);
 
+  // If this window was opened with #/popup/<type>, render only the popup view —
+  // no sidebar, no player, no UpdateChecker. The popup talks to the main window
+  // via BroadcastChannel for everything.
+  const isPopup = typeof window !== 'undefined' && window.location.hash.startsWith('#/popup/');
+
+  if (isPopup) {
+    return (
+      <ErrorBoundary>
+        <PlayerProvider>
+          <Router>
+            <Routes>
+              <Route path="/popup/:type" element={<PopupApp />} />
+            </Routes>
+          </Router>
+        </PlayerProvider>
+      </ErrorBoundary>
+    );
+  }
+
   return (
     <ErrorBoundary>
       <PlayerProvider>
@@ -103,7 +123,12 @@ function App() {
               </Routes>
             </main>
             {showLyrics && <Lyrics onClose={() => setShowLyrics(false)} />}
-            {showEqualizer && <Equalizer onClose={() => setShowEqualizer(false)} />}
+            {/* Equalizer is always mounted so popup EQ can drive the audio graph
+                even when its inline panel is closed. visible controls UI only. */}
+            <Equalizer
+              visible={showEqualizer}
+              onClose={() => setShowEqualizer(false)}
+            />
             {showQueue && <Queue onClose={() => setShowQueue(false)} />}
             <VideoPanel />
             <Player
