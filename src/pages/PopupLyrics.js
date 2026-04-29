@@ -6,16 +6,25 @@ import styles from './PopupLyrics.module.css';
 const API_BASE = process.env.REACT_APP_API_URL;
 
 function PopupLyrics() {
-  const [state, setState] = useState({ currentSong: null, currentTime: 0 });
+  // Keep currentSong and currentTime as separate states so updating one
+  // (currentTime ~4x/sec) doesn't trigger re-renders that depend on the other.
+  const [currentSong, setCurrentSong] = useState(null);
+  const [currentTime, setCurrentTime] = useState(0);
   const [lyricsData, setLyricsData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const activeRef = useRef(null);
 
-  // Subscribe to player state from main window
+  // Subscribe to player state from main window. Only push values that actually
+  // changed so we don't re-render the lyrics list on every audio tick.
   useEffect(() => {
     const cleanup = subscribe((msg) => {
-      if (msg?.type === 'state') setState((s) => ({ ...s, ...msg.payload }));
+      if (msg?.type !== 'state') return;
+      const p = msg.payload || {};
+      if (p.currentSong !== undefined) {
+        setCurrentSong((prev) => (prev?.id !== p.currentSong?.id ? p.currentSong : prev));
+      }
+      if (typeof p.currentTime === 'number') setCurrentTime(p.currentTime);
     });
     requestState();
     return cleanup;
@@ -23,7 +32,7 @@ function PopupLyrics() {
 
   // Fetch lyrics whenever the song changes
   useEffect(() => {
-    const song = state.currentSong;
+    const song = currentSong;
     if (!song) { setLyricsData(null); setError(''); return; }
     let cancelled = false;
     setLoading(true);
@@ -47,7 +56,7 @@ function PopupLyrics() {
       finally { if (!cancelled) setLoading(false); }
     })();
     return () => { cancelled = true; };
-  }, [state.currentSong]);
+  }, [currentSong]);
 
   const isSynced = lyricsData?.synced;
   const lines = lyricsData?.lines || [];
@@ -55,42 +64,33 @@ function PopupLyrics() {
   let activeIndex = -1;
   if (isSynced) {
     for (let i = lines.length - 1; i >= 0; i--) {
-      if (state.currentTime >= lines[i].time) { activeIndex = i; break; }
+      if (currentTime >= lines[i].time) { activeIndex = i; break; }
     }
   }
 
-  // Auto-scroll to the active line
+  // Auto-scroll only when the active line actually changes — scrolling on
+  // every currentTime tick caused visible flickering.
   useEffect(() => {
     if (activeRef.current && isSynced) {
       activeRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
-  }, [state.currentTime, isSynced]);
+  }, [activeIndex, isSynced]);
 
   const onLineClick = (time) => { if (isSynced) broadcastAction('seek', time); };
 
   return (
     <div className={styles.wrap}>
-      <div className={styles.header}>
-        <h3 className={styles.title}>Lyrics</h3>
-        {state.currentSong && (
-          <div className={styles.songInfo}>
-            <span className={styles.songTitle}>{state.currentSong.title}</span>
-            <span className={styles.songArtist}>{state.currentSong.artist || 'Unknown'}</span>
-          </div>
-        )}
-      </div>
-
       <div className={styles.content}>
-        {!state.currentSong && (
+        {!currentSong && (
           <div className={styles.status}>
             <IoMusicalNotes className={styles.statusIcon} />
             <p>No song playing</p>
           </div>
         )}
-        {state.currentSong && loading && (
+        {currentSong && loading && (
           <div className={styles.status}><p>Loading lyrics...</p></div>
         )}
-        {state.currentSong && error && !loading && (
+        {currentSong && error && !loading && (
           <div className={styles.status}><p>{error}</p></div>
         )}
         {lines.length > 0 && !loading && (

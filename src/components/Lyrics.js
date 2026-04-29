@@ -50,24 +50,25 @@ function Lyrics({ onClose }) {
     return () => { cancelled = true; };
   }, [currentSong]);
 
-  // Auto-scroll to active line (only for synced lyrics)
-  useEffect(() => {
-    if (activeRef.current && lyricsData?.synced) {
-      activeRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
-  }, [currentTime, lyricsData?.synced]);
-
-  const handleLineClick = useCallback((time) => {
-    if (lyricsData?.synced) seekTo(time);
-  }, [seekTo, lyricsData?.synced]);
-
-  // Find active line (only for synced)
+  // Find active line (only for synced) — moved up so the auto-scroll
+  // effect can depend on it instead of currentTime, which caused flicker.
   let activeIndex = -1;
   if (lyricsData?.synced && lyricsData.lines) {
     for (let i = lyricsData.lines.length - 1; i >= 0; i--) {
       if (currentTime >= lyricsData.lines[i].time) { activeIndex = i; break; }
     }
   }
+
+  // Auto-scroll only when the active line actually changes
+  useEffect(() => {
+    if (activeRef.current && lyricsData?.synced) {
+      activeRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [activeIndex, lyricsData?.synced]);
+
+  const handleLineClick = useCallback((time) => {
+    if (lyricsData?.synced) seekTo(time);
+  }, [seekTo, lyricsData?.synced]);
 
   if (!currentSong) return null;
 

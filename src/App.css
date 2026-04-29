@@ -219,9 +219,9 @@ body {
 /* Mini player mode */
 .app.mini-mode .main-content,
 .app.mini-mode aside,
-.app.mini-mode [class*="Lyrics"],
-.app.mini-mode [class*="Queue"],
-.app.mini-mode [class*="Equalizer"],
+.app.mini-mode [class*="Lyrics_panel"],
+.app.mini-mode [class*="Queue_panel"],
+.app.mini-mode [class*="Equalizer_overlay"],
 .app.mini-mode [class*="NowPlaying"],
 .app.mini-mode [class*="UpdateChecker"] { display: none !important; }
 

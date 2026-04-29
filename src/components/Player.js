@@ -1,7 +1,6 @@
 import React, { useRef, useCallback, useState } from 'react';
 import { usePlayer } from '../context/PlayerContext';
 import { IoPlay, IoPause, IoPlaySkipForward, IoPlaySkipBack, IoPlayForward, IoPlayBack, IoVolumeHigh, IoVolumeMute, IoMusicalNotes, IoDocumentText, IoVideocam, IoOptions, IoContract, IoExpand, IoList } from 'react-icons/io5';
-import MiniLyrics from './MiniLyrics';
 import styles from './Player.module.css';
 
 function Player({ showLyrics, onToggleLyrics, showEqualizer, onToggleEqualizer, showQueue, onToggleQueue }) {
@@ -13,58 +12,26 @@ function Player({ showLyrics, onToggleLyrics, showEqualizer, onToggleEqualizer, 
 
   const seekBarRef = useRef(null);
   const [isMini, setIsMini] = useState(false);
-  // Track open popup windows so we can close them when leaving mini mode
-  const popupRefs = useRef({}); // { lyrics, equalizer, queue } -> NW.js Window
+  // Track which popup types we have open so the close-on-exit-mini logic
+  // knows which inline panels to re-open.
+  const openPopupTypes = useRef(new Set());
 
-  // Open or focus a popup window for the given panel.
-  // Each popup loads the same React app at #/popup/<type> via the local server.
-  const POPUP_SIZES = {
-    lyrics: { width: 380, height: 500 },
-    equalizer: { width: 660, height: 360 },
-    queue: { width: 380, height: 520 },
-  };
-  const POPUP_TITLES = {
-    lyrics: 'PlayFool — Lyrics',
-    equalizer: 'PlayFool — Equalizer',
-    queue: 'PlayFool — Queue',
-  };
-  const openPopup = (type) => {
-    const existing = popupRefs.current[type];
-    if (existing) {
-      try { existing.focus(); return; } catch (e) {}
-    }
-    if (typeof window.nw === 'undefined' || !window.nw.Window) {
-      // Not running in NW.js — fall back to toggling the inline panel
-      if (type === 'lyrics') onToggleLyrics();
-      else if (type === 'equalizer') onToggleEqualizer();
-      else if (type === 'queue') onToggleQueue();
-      return;
-    }
-    const size = POPUP_SIZES[type];
-    const url = `${window.location.origin}/#/popup/${type}`;
-    window.nw.Window.open(url, {
-      title: POPUP_TITLES[type],
-      width: size.width,
-      height: size.height,
-      min_width: 300,
-      min_height: 240,
-      resizable: true,
-      always_on_top: true,
-      frame: true,
-      icon: 'public/icon.png',
-    }, (newWin) => {
-      if (!newWin) return;
-      popupRefs.current[type] = newWin;
-      newWin.on('closed', () => { popupRefs.current[type] = null; });
-    });
+  // Ask the server to open a floating panel window. nw.Window.open lives in the
+  // node-main context which has full NW.js access; the React app talks to it
+  // via /api/popup/* over fetch.
+  const openPopup = async (type) => {
+    try {
+      await fetch('/api/popup/open', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type }),
+      });
+      openPopupTypes.current.add(type);
+    } catch (e) { console.error('openPopup failed:', e); }
   };
 
-  // Close all popups when leaving mini mode
-  const closeAllPopups = () => {
-    Object.entries(popupRefs.current).forEach(([key, win]) => {
-      if (win) { try { win.close(true); } catch (e) {} }
-      popupRefs.current[key] = null;
-    });
+  const closeAllPopups = async () => {
+    try { await fetch('/api/popup/close-all', { method: 'POST' }); } catch (e) {}
   };
 
   const formatTime = (t) => {
@@ -87,7 +54,6 @@ function Player({ showLyrics, onToggleLyrics, showEqualizer, onToggleEqualizer, 
   return (
     <div className={styles.bar}>
       {/* Lyrics ticker shown only in mini mode (CSS-gated by .app.mini-mode) */}
-      <MiniLyrics hasVideo={mediaType === 'video' && showVideoPlayer} />
 
       {currentSong && (
         <div className={styles.progressTop} ref={seekBarRef} onClick={handleSeekClick}>
@@ -190,12 +156,13 @@ function Player({ showLyrics, onToggleLyrics, showEqualizer, onToggleEqualizer, 
                 } else {
                   appEl?.classList.remove('mini-mode');
                   setIsMini(false);
-                  // Closing mini mode: close any popups and reopen
-                  // the corresponding inline panels so the user keeps context.
-                  const hadLyrics = !!popupRefs.current.lyrics;
-                  const hadEq = !!popupRefs.current.equalizer;
-                  const hadQueue = !!popupRefs.current.queue;
-                  closeAllPopups();
+                  // Leaving mini: close any open popups and re-open the
+                  // matching inline panels so the user keeps context.
+                  const hadLyrics = openPopupTypes.current.has('lyrics');
+                  const hadEq = openPopupTypes.current.has('equalizer');
+                  const hadQueue = openPopupTypes.current.has('queue');
+                  openPopupTypes.current.clear();
+                  await closeAllPopups();
                   if (hadLyrics && !showLyrics) onToggleLyrics();
                   if (hadEq && !showEqualizer) onToggleEqualizer();
                   if (hadQueue && !showQueue) onToggleQueue();
