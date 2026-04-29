@@ -1188,6 +1188,72 @@ app.get('/api/localvideo', (req, res) => {
   }
 });
 
+// Track popup windows opened from the main player so we can close them on demand.
+const popupWindows = {};
+
+// Open a floating popup window for one of the side panels (lyrics/equalizer/queue).
+// Frontend calls this from mini mode because nw.Window.open isn't reliably
+// available on remote-loaded URLs without node-remote permissions.
+app.post('/api/popup/open', (req, res) => {
+  if (typeof nw === 'undefined' || !nw.Window || !nw.Window.open) {
+    return res.json({ error: 'NW.js not available' });
+  }
+  const { type } = req.body || {};
+  if (!['lyrics', 'equalizer', 'queue'].includes(type)) {
+    return res.json({ error: 'Invalid popup type' });
+  }
+
+  // Focus the existing popup if it's already open
+  const existing = popupWindows[type];
+  if (existing) {
+    try { existing.focus(); return res.json({ ok: true, focused: true }); } catch (e) {}
+  }
+
+  const sizes = {
+    lyrics:    { width: 380, height: 500 },
+    equalizer: { width: 660, height: 360 },
+    queue:     { width: 380, height: 520 },
+  };
+  const titles = {
+    lyrics:    'PlayFool — Lyrics',
+    equalizer: 'PlayFool — Equalizer',
+    queue:     'PlayFool — Queue',
+  };
+  const { width, height } = sizes[type];
+  const port = (typeof global !== 'undefined' && global.PLAYFOOL_PORT) || 3001;
+  const url = `http://localhost:${port}/#/popup/${type}`;
+
+  try {
+    nw.Window.open(url, {
+      title: titles[type],
+      width, height,
+      min_width: 300, min_height: 240,
+      resizable: true,
+      always_on_top: true,
+      frame: true,
+    }, (newWin) => {
+      if (!newWin) return;
+      popupWindows[type] = newWin;
+      newWin.on('closed', () => { popupWindows[type] = null; });
+    });
+    res.json({ ok: true });
+  } catch (e) {
+    res.json({ error: e.message });
+  }
+});
+
+// Close all popup windows. Called when leaving mini mode.
+app.post('/api/popup/close-all', (req, res) => {
+  let closed = 0;
+  for (const [k, win] of Object.entries(popupWindows)) {
+    if (win) {
+      try { win.close(true); closed++; } catch (e) {}
+      popupWindows[k] = null;
+    }
+  }
+  res.json({ ok: true, closed });
+});
+
 // Resize the mini-mode window without toggling out of mini.
 // Used to expand the floating window when the lyrics ticker is opened.
 app.post('/api/mini-resize', (req, res) => {
