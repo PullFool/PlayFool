@@ -1,28 +1,44 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import styles from './Equalizer.module.css';
 
+// 10-band hi-fi EQ (Winamp/Foobar standard frequencies)
 const BANDS = [
-  { freq: 60, label: '60Hz' },
+  { freq: 31, label: '31Hz' },
+  { freq: 62, label: '62Hz' },
+  { freq: 125, label: '125Hz' },
   { freq: 250, label: '250Hz' },
+  { freq: 500, label: '500Hz' },
   { freq: 1000, label: '1kHz' },
+  { freq: 2000, label: '2kHz' },
   { freq: 4000, label: '4kHz' },
+  { freq: 8000, label: '8kHz' },
   { freq: 16000, label: '16kHz' },
 ];
 
+const GAIN_RANGE = 18; // ±18 dB for clearly audible adjustments
+const PEAKING_Q = 1.4;  // wider Q so each band affects a broader range = obvious effect
+
 const PRESETS = {
-  flat: [0, 0, 0, 0, 0],
-  bass: [6, 4, 0, -2, -1],
-  treble: [-1, -2, 0, 4, 6],
-  vocal: [-2, 0, 4, 3, -1],
-  rock: [4, 2, -1, 3, 5],
-  pop: [-1, 2, 4, 2, -1],
-  jazz: [3, 0, 1, 3, 4],
+  flat:   [ 0,  0,  0,  0,  0,  0,  0,  0,  0,  0],
+  bass:   [ 8,  7,  6,  4,  2,  0, -1, -2, -1,  0],
+  treble: [ 0, -1, -2, -1,  0,  2,  4,  6,  7,  8],
+  vocal:  [-3, -2, -1,  1,  3,  5,  4,  2,  0, -1],
+  rock:   [ 5,  4,  2,  0, -1,  1,  3,  5,  6,  6],
+  pop:    [-2, -1,  0,  2,  4,  4,  2,  0, -1, -2],
+  jazz:   [ 4,  3,  1,  0,  1,  3,  4,  3,  2,  3],
 };
 
 function Equalizer({ onClose }) {
   const [gains, setGains] = useState(() => {
     const saved = localStorage.getItem('playfool_eq');
-    return saved ? JSON.parse(saved) : PRESETS.flat;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        // Migrate old 5-band saves to the new 10-band layout
+        if (Array.isArray(parsed) && parsed.length === BANDS.length) return parsed;
+      } catch (e) {}
+    }
+    return [...PRESETS.flat];
   });
   const [activePreset, setActivePreset] = useState('flat');
   const filtersRef = useRef([]);
@@ -44,7 +60,7 @@ function Equalizer({ onClose }) {
       filter.type = i === 0 ? 'lowshelf' : i === BANDS.length - 1 ? 'highshelf' : 'peaking';
       filter.frequency.value = band.freq;
       filter.gain.value = gains[i];
-      if (filter.type === 'peaking') filter.Q.value = 1.5;
+      if (filter.type === 'peaking') filter.Q.value = PEAKING_Q;
       return filter;
     });
 
@@ -133,8 +149,8 @@ function Equalizer({ onClose }) {
               <span className={styles.gainValue}>{gains[i] > 0 ? '+' : ''}{gains[i]}dB</span>
               <input
                 type="range"
-                min="-12"
-                max="12"
+                min={-GAIN_RANGE}
+                max={GAIN_RANGE}
                 step="1"
                 value={gains[i]}
                 onChange={e => handleGainChange(i, e.target.value)}
