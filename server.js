@@ -1188,6 +1188,33 @@ app.get('/api/localvideo', (req, res) => {
   }
 });
 
+// Resize the mini-mode window without toggling out of mini.
+// Used to expand the floating window when the lyrics ticker is opened.
+app.post('/api/mini-resize', (req, res) => {
+  try {
+    if (typeof nw !== 'undefined') {
+      const win = nw.Window.get();
+      const { hasVideo, lyricsExpanded } = req.body || {};
+      // Compact mini: 70 (audio) / 310 (with video)
+      // Expanded with lyrics: 250 (audio) / 480 (with video)
+      let height;
+      if (lyricsExpanded) {
+        height = hasVideo ? 480 : 250;
+      } else {
+        height = hasVideo ? 310 : 70;
+      }
+      win.setMinimumSize(380, height);
+      win.resizeTo(420, height);
+      win.setAlwaysOnTop(true);
+      res.json({ ok: true, height });
+    } else {
+      res.json({ error: 'Not running in NW.js' });
+    }
+  } catch (e) {
+    res.json({ error: e.message });
+  }
+});
+
 // API: Toggle mini player mode
 let isMiniMode = false;
 app.post('/api/mini-toggle', (req, res) => {
