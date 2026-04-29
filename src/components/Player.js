@@ -1,6 +1,7 @@
 import React, { useRef, useCallback, useState } from 'react';
 import { usePlayer } from '../context/PlayerContext';
 import { IoPlay, IoPause, IoPlaySkipForward, IoPlaySkipBack, IoPlayForward, IoPlayBack, IoVolumeHigh, IoVolumeMute, IoMusicalNotes, IoDocumentText, IoVideocam, IoOptions, IoContract, IoExpand, IoList } from 'react-icons/io5';
+import MiniLyrics from './MiniLyrics';
 import styles from './Player.module.css';
 
 function Player({ showLyrics, onToggleLyrics, showEqualizer, onToggleEqualizer, showQueue, onToggleQueue }) {
@@ -32,6 +33,9 @@ function Player({ showLyrics, onToggleLyrics, showEqualizer, onToggleEqualizer, 
 
   return (
     <div className={styles.bar}>
+      {/* Lyrics ticker shown only in mini mode (CSS-gated by .app.mini-mode) */}
+      <MiniLyrics hasVideo={mediaType === 'video' && showVideoPlayer} />
+
       {currentSong && (
         <div className={styles.progressTop} ref={seekBarRef} onClick={handleSeekClick}>
           <div className={styles.progressBg} />
