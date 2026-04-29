@@ -30,4 +30,4 @@ Name: "{group}\Uninstall PlayFool"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\PlayFool"; Filename: "{app}\PlayFool.exe"; IconFilename: "{app}\public\icon.ico"; Parameters: "--user-data-dir=""{localappdata}\PlayFool\nw-data"""; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\PlayFool.exe"; Parameters: "--user-data-dir=""{localappdata}\PlayFool\nw-data"""; Description: "Launch PlayFool"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\PlayFool.exe"; Parameters: "--user-data-dir=""{localappdata}\PlayFool\nw-data"""; Description: "Launch PlayFool"; Flags: nowait postinstall
