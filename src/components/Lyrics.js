@@ -1,54 +1,78 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAudio } from '../context/PlayerContext';
-import { IoClose, IoMusicalNotes } from 'react-icons/io5';
+import { IoClose, IoMusicalNotes, IoThumbsDown, IoPlaySkipForward } from 'react-icons/io5';
 import styles from './Lyrics.module.css';
 
 const API_BASE = process.env.REACT_APP_API_URL;
+const REJECT_KEY = 'playfool_lyrics_rejected'; // { "title|artist": ["id1","id2"] }
+
+function getSongKey(song) {
+  if (!song) return '';
+  return `${(song.title || '').toLowerCase().trim()}|${(song.artist || '').toLowerCase().trim()}`;
+}
+
+function loadRejected(key) {
+  try {
+    const all = JSON.parse(localStorage.getItem(REJECT_KEY) || '{}');
+    return Array.isArray(all[key]) ? all[key] : [];
+  } catch (e) { return []; }
+}
+
+function saveRejected(key, ids) {
+  try {
+    const all = JSON.parse(localStorage.getItem(REJECT_KEY) || '{}');
+    all[key] = ids;
+    localStorage.setItem(REJECT_KEY, JSON.stringify(all));
+  } catch (e) {}
+}
 
 function Lyrics({ onClose }) {
   const { currentSong, currentTime, seekTo } = useAudio();
   const [lyricsData, setLyricsData] = useState(null); // { lines, synced }
+  const [match, setMatch] = useState(null); // { sourceId, totalMatches, currentIndex }
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const activeRef = useRef(null);
 
-  useEffect(() => {
-    if (!currentSong) { setLyricsData(null); return; }
-
-    let cancelled = false;
-    setLoading(true);
-    setError('');
-    setLyricsData(null);
-
-    const fetchLyrics = async () => {
-      try {
-        const res = await fetch(`${API_BASE}/lyrics/fetch`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            title: currentSong.title,
-            file: decodeURIComponent(currentSong.url.split('/').pop() || ''),
-          }),
+  const fetchLyrics = useCallback(async (song, opts = {}) => {
+    const songKey = getSongKey(song);
+    const rejectedIds = loadRejected(songKey);
+    setLoading(true); setError(''); setLyricsData(null); setMatch(null);
+    try {
+      const res = await fetch(`${API_BASE}/lyrics/fetch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: song.title,
+          file: decodeURIComponent(song.url.split('/').pop() || ''),
+          rejectedIds,
+          force: !!opts.force,
+        }),
+      });
+      const data = await res.json();
+      if (data.lyrics && data.lyrics.lines && data.lyrics.lines.length > 0) {
+        setLyricsData(data.lyrics);
+        setMatch({
+          sourceId: data.sourceId,
+          totalMatches: data.totalMatches,
+          currentIndex: data.currentIndex,
         });
-        if (cancelled) return;
-        const data = await res.json();
-        if (cancelled) return;
-
-        if (data.lyrics && data.lyrics.lines && data.lyrics.lines.length > 0) {
-          setLyricsData(data.lyrics);
-        } else {
-          setError('Lyrics not found for this song');
-        }
-      } catch (e) {
-        if (!cancelled) setError('Could not load lyrics');
-      } finally {
-        if (!cancelled) setLoading(false);
+      } else {
+        setError(rejectedIds.length > 0
+          ? 'No more matches to try — all the alternatives were rejected'
+          : 'Lyrics not found for this song');
       }
-    };
+    } catch (e) {
+      setError('Could not load lyrics');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-    fetchLyrics();
-    return () => { cancelled = true; };
-  }, [currentSong]);
+  useEffect(() => {
+    if (!currentSong) { setLyricsData(null); setMatch(null); return; }
+    fetchLyrics(currentSong);
+  }, [currentSong, fetchLyrics]);
 
   // Find active line (only for synced) — moved up so the auto-scroll
   // effect can depend on it instead of currentTime, which caused flicker.
@@ -69,6 +93,26 @@ function Lyrics({ onClose }) {
   const handleLineClick = useCallback((time) => {
     if (lyricsData?.synced) seekTo(time);
   }, [seekTo, lyricsData?.synced]);
+
+  const skipMatch = useCallback(() => {
+    if (!currentSong || !match?.sourceId) return;
+    const key = getSongKey(currentSong);
+    const next = Array.from(new Set([...loadRejected(key), match.sourceId]));
+    saveRejected(key, next);
+    fetchLyrics(currentSong, { force: true });
+  }, [currentSong, match, fetchLyrics]);
+
+  const markWrong = useCallback(() => {
+    if (!currentSong || !match?.sourceId) return;
+    if (!window.confirm(
+      `Mark these lyrics as wrong for "${currentSong.title}"?\n\n` +
+      `We won't show this match again, and we'll try a different one next time.`
+    )) return;
+    const key = getSongKey(currentSong);
+    const next = Array.from(new Set([...loadRejected(key), match.sourceId]));
+    saveRejected(key, next);
+    fetchLyrics(currentSong, { force: true });
+  }, [currentSong, match, fetchLyrics]);
 
   if (!currentSong) return null;
 
@@ -126,6 +170,32 @@ function Lyrics({ onClose }) {
           </div>
         )}
       </div>
+
+      {match && match.totalMatches > 0 && (
+        <div className={styles.matchBar}>
+          <span className={styles.matchSource}>
+            lrclib · match {match.currentIndex} of {match.totalMatches}
+          </span>
+          <div className={styles.matchActions}>
+            <button
+              className={styles.matchBtn}
+              onClick={skipMatch}
+              disabled={loading || match.totalMatches <= match.currentIndex}
+              title="Try the next match"
+            >
+              <IoPlaySkipForward /> Try next
+            </button>
+            <button
+              className={styles.matchBtn}
+              onClick={markWrong}
+              disabled={loading}
+              title="Mark these lyrics as wrong"
+            >
+              <IoThumbsDown /> Wrong
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

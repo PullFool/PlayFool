@@ -758,27 +758,37 @@ async function searchLrclib(query) {
   }
 }
 
-function resultsToLrc(results, preferPlain) {
-  // If preferPlain (e.g. live version), skip synced lyrics since timing won't match
+function resultsToLrc(results, preferPlain, rejectedIds = []) {
+  // Filter out matches the user has previously marked as wrong.
+  const rejectedSet = new Set((rejectedIds || []).map(String));
+  const eligible = results.filter((r) => !rejectedSet.has(String(r.id)));
+  if (eligible.length === 0) return null;
+
   const best = preferPlain
-    ? (results.find(r => r.plainLyrics) || results[0])
-    : (results.find(r => r.syncedLyrics) || results[0]);
+    ? (eligible.find(r => r.plainLyrics) || eligible[0])
+    : (eligible.find(r => r.syncedLyrics) || eligible[0]);
+
+  // Index the user is currently seeing (1-based) against the full result list,
+  // not just the eligible subset, so the "match X of Y" UI is accurate.
+  const fullIndex = results.findIndex((r) => r.id === best.id);
+  const meta = {
+    sourceId: String(best.id),
+    totalMatches: results.length,
+    currentIndex: fullIndex >= 0 ? fullIndex + 1 : 1,
+  };
 
   if (!preferPlain && best.syncedLyrics) {
-    return { type: 'synced', content: best.syncedLyrics };
+    return { type: 'synced', content: best.syncedLyrics, ...meta };
   }
   if (best.plainLyrics) {
-    // Plain lyrics - no timing, just text with placeholder times
     const lines = best.plainLyrics.split('\n').filter(l => l.trim());
-    const lrc = lines.map((line, i) => {
-      return `[00:00.00]${line}`;
-    }).join('\n');
-    return { type: 'plain', content: lrc };
+    const lrc = lines.map((line) => `[00:00.00]${line}`).join('\n');
+    return { type: 'plain', content: lrc, ...meta };
   }
   return null;
 }
 
-async function fetchLyricsFromLrclib(title) {
+async function fetchLyricsFromLrclib(title, rejectedIds = []) {
   const variants = getSearchVariants(title);
   const isLiveOrCover = /live|session|cover|acoustic|remix|performance/i.test(title);
 
@@ -786,8 +796,7 @@ async function fetchLyricsFromLrclib(title) {
     console.log(`Searching lyrics: "${query}"`);
     const results = await searchLrclib(query);
     if (results) {
-      // For live/cover versions, prefer plain lyrics (synced timing won't match)
-      const lrc = resultsToLrc(results, isLiveOrCover);
+      const lrc = resultsToLrc(results, isLiveOrCover, rejectedIds);
       if (lrc) return lrc;
     }
   }
@@ -808,6 +817,17 @@ async function fetchAndSaveLyrics(title, audioFilePath) {
   }
 }
 
+function readLyricsMeta(lrcPath) {
+  const metaPath = lrcPath + '.meta.json';
+  if (!fs.existsSync(metaPath)) return null;
+  try { return JSON.parse(fs.readFileSync(metaPath, 'utf-8')); } catch (e) { return null; }
+}
+
+function writeLyricsMeta(lrcPath, meta) {
+  const metaPath = lrcPath + '.meta.json';
+  try { fs.writeFileSync(metaPath, JSON.stringify(meta), 'utf-8'); } catch (e) {}
+}
+
 // API: Get lyrics for a song
 app.get('/api/lyrics', (req, res) => {
   const file = (req.query.file || '').trim();
@@ -818,29 +838,48 @@ app.get('/api/lyrics', (req, res) => {
 
   if (fs.existsSync(lrcPath)) {
     const content = fs.readFileSync(lrcPath, 'utf-8');
-    return res.json({ lyrics: parseLrc(content) });
+    const meta = readLyricsMeta(lrcPath) || {};
+    return res.json({ lyrics: parseLrc(content), ...meta });
   }
 
   res.json({ lyrics: null });
 });
 
-// API: Fetch lyrics on demand
+// API: Fetch lyrics on demand. Accepts:
+//   title, file              — what we're looking up
+//   rejectedIds[]            — match IDs the user has marked wrong; skip them
+//   force                    — bypass the cached .lrc and refetch
 app.post('/api/lyrics/fetch', async (req, res) => {
-  const { title, file } = req.body;
+  const { title, file, rejectedIds = [], force = false } = req.body;
   if (!title || !file) return res.json({ error: 'Missing title or file' });
 
   const basename = path.basename(file, path.extname(file));
   const lrcPath = path.join(lyricsDir, basename + '.lrc');
 
-  if (fs.existsSync(lrcPath)) {
-    const content = fs.readFileSync(lrcPath, 'utf-8');
-    return res.json({ lyrics: parseLrc(content) });
+  if (!force && fs.existsSync(lrcPath)) {
+    const meta = readLyricsMeta(lrcPath) || {};
+    // If the cached match has been rejected, ignore the cache and refetch.
+    const cachedRejected = meta.sourceId && rejectedIds.map(String).includes(String(meta.sourceId));
+    if (!cachedRejected) {
+      const content = fs.readFileSync(lrcPath, 'utf-8');
+      return res.json({ lyrics: parseLrc(content), ...meta });
+    }
   }
 
-  const lyrics = await fetchLyricsFromLrclib(title);
+  const lyrics = await fetchLyricsFromLrclib(title, rejectedIds);
   if (lyrics) {
     fs.writeFileSync(lrcPath, lyrics.content, 'utf-8');
-    return res.json({ lyrics: parseLrc(lyrics.content) });
+    writeLyricsMeta(lrcPath, {
+      sourceId: lyrics.sourceId,
+      totalMatches: lyrics.totalMatches,
+      currentIndex: lyrics.currentIndex,
+    });
+    return res.json({
+      lyrics: parseLrc(lyrics.content),
+      sourceId: lyrics.sourceId,
+      totalMatches: lyrics.totalMatches,
+      currentIndex: lyrics.currentIndex,
+    });
   }
 
   res.json({ lyrics: null, error: 'Lyrics not found' });
@@ -1529,6 +1568,139 @@ process.on('SIGTERM', () => {
   killAllChildProcesses();
   if (activeServer) activeServer.close();
   process.exit(0);
+});
+
+// ===== LAN Library Sync =====
+// Lets the mobile app pair with the desktop over the local network and pull
+// or push MP3s into ~/Music/PlayFool. Pairing uses a 6-char PIN saved in
+// appData; mobile sends it as ?token= or X-PlayFool-Token header.
+
+const syncStateFile = path.join(appDataDir, 'sync.json');
+let syncState = { enabled: false, token: null, peers: [] };
+try {
+  if (fs.existsSync(syncStateFile)) {
+    syncState = { ...syncState, ...JSON.parse(fs.readFileSync(syncStateFile, 'utf8')) };
+  }
+} catch (e) { /* ignore — fall back to default */ }
+
+function persistSyncState() {
+  try { fs.writeFileSync(syncStateFile, JSON.stringify(syncState, null, 2), 'utf8'); } catch (e) {}
+}
+
+function genPin() {
+  const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // skip ambiguous chars (0/O, 1/I/L)
+  let out = '';
+  for (let i = 0; i < 6; i++) out += alphabet[crypto.randomInt(alphabet.length)];
+  return out;
+}
+
+function getLocalAddresses() {
+  const out = [];
+  const ifaces = os.networkInterfaces();
+  for (const name of Object.keys(ifaces)) {
+    for (const a of ifaces[name] || []) {
+      if (a.family === 'IPv4' && !a.internal) out.push(a.address);
+    }
+  }
+  return out;
+}
+
+function checkSyncToken(req, res, next) {
+  if (!syncState.enabled) return res.status(403).json({ error: 'sync_disabled' });
+  const token = req.headers['x-playfool-token'] || req.query.token;
+  if (!token || token !== syncState.token) return res.status(401).json({ error: 'bad_token' });
+  next();
+}
+
+function basicSongMeta(filename) {
+  const fullPath = path.join(downloadsDir, filename);
+  if (!fs.existsSync(fullPath)) return null;
+  const stat = fs.statSync(fullPath);
+  return { name: filename, size: stat.size, mtime: stat.mtimeMs };
+}
+
+// Settings UI — owner-only, doesn't require token
+app.get('/api/sync/settings', (req, res) => {
+  res.json({
+    enabled: !!syncState.enabled,
+    token: syncState.token,
+    addresses: getLocalAddresses(),
+    port: (typeof global !== 'undefined' && global.PLAYFOOL_PORT) || 3000,
+    peers: syncState.peers.slice(-5),
+  });
+});
+
+app.post('/api/sync/enable', (req, res) => {
+  if (!syncState.token) syncState.token = genPin();
+  syncState.enabled = true;
+  persistSyncState();
+  res.json({ ok: true, token: syncState.token });
+});
+
+app.post('/api/sync/disable', (req, res) => {
+  syncState.enabled = false;
+  persistSyncState();
+  res.json({ ok: true });
+});
+
+app.post('/api/sync/regenerate', (req, res) => {
+  syncState.token = genPin();
+  persistSyncState();
+  res.json({ ok: true, token: syncState.token });
+});
+
+// Mobile-facing endpoints below — all token-gated.
+app.get('/api/sync/info', checkSyncToken, (req, res) => {
+  res.json({ ok: true, name: 'PlayFool Desktop', os: process.platform });
+});
+
+app.get('/api/sync/library', checkSyncToken, (req, res) => {
+  if (!fs.existsSync(downloadsDir)) return res.json({ files: [] });
+  const peer = (req.headers['x-playfool-peer'] || 'unknown').toString().slice(0, 60);
+  if (peer) {
+    syncState.peers = [
+      { name: peer, at: Date.now() },
+      ...syncState.peers.filter((p) => p.name !== peer),
+    ].slice(0, 5);
+    persistSyncState();
+  }
+  const files = fs.readdirSync(downloadsDir)
+    .filter((f) => /\.(mp3|m4a|opus|webm|ogg|wav)$/i.test(f))
+    .map(basicSongMeta)
+    .filter(Boolean);
+  res.json({ files });
+});
+
+app.get('/api/sync/file/:filename', checkSyncToken, (req, res) => {
+  const filename = path.basename(req.params.filename || '');
+  const fullPath = path.join(downloadsDir, filename);
+  if (!filename || !fs.existsSync(fullPath)) return res.status(404).json({ error: 'not_found' });
+  const ext = path.extname(filename).toLowerCase();
+  if (MIME_TYPES[ext]) res.setHeader('Content-Type', MIME_TYPES[ext]);
+  res.setHeader('Content-Length', fs.statSync(fullPath).size);
+  fs.createReadStream(fullPath).pipe(res);
+});
+
+// Raw-body upload — mobile streams the MP3 bytes directly. Filename comes
+// via header to avoid needing multipart middleware on the desktop side.
+app.post('/api/sync/upload', checkSyncToken, (req, res) => {
+  const filenameRaw = req.headers['x-playfool-filename'] || '';
+  const filename = path.basename(filenameRaw.toString()).replace(/[^\w.\- ()]/g, '_');
+  if (!filename || !/\.(mp3|m4a|opus|ogg|wav)$/i.test(filename)) {
+    return res.status(400).json({ error: 'bad_filename' });
+  }
+  const fullPath = path.join(downloadsDir, filename);
+  if (fs.existsSync(fullPath)) {
+    return res.status(409).json({ error: 'already_exists' });
+  }
+  const out = fs.createWriteStream(fullPath);
+  let bytes = 0;
+  req.on('data', (chunk) => { bytes += chunk.length; });
+  req.on('end', () => out.end());
+  req.on('error', () => { try { out.destroy(); fs.unlinkSync(fullPath); } catch (e) {} });
+  out.on('finish', () => res.json({ ok: true, written: filename, bytes }));
+  out.on('error', (e) => { try { fs.unlinkSync(fullPath); } catch (_) {} res.status(500).json({ error: 'write_failed', detail: e.message }); });
+  req.pipe(out);
 });
 
 module.exports = { startServer };

@@ -1,9 +1,30 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { IoMusicalNotes } from 'react-icons/io5';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { IoMusicalNotes, IoThumbsDown, IoPlaySkipForward } from 'react-icons/io5';
 import { subscribe, requestState, broadcastAction } from '../utils/playerBroadcast';
 import styles from './PopupLyrics.module.css';
 
 const API_BASE = process.env.REACT_APP_API_URL;
+const REJECT_KEY = 'playfool_lyrics_rejected';
+
+function getSongKey(song) {
+  if (!song) return '';
+  return `${(song.title || '').toLowerCase().trim()}|${(song.artist || '').toLowerCase().trim()}`;
+}
+
+function loadRejected(key) {
+  try {
+    const all = JSON.parse(localStorage.getItem(REJECT_KEY) || '{}');
+    return Array.isArray(all[key]) ? all[key] : [];
+  } catch (e) { return []; }
+}
+
+function saveRejected(key, ids) {
+  try {
+    const all = JSON.parse(localStorage.getItem(REJECT_KEY) || '{}');
+    all[key] = ids;
+    localStorage.setItem(REJECT_KEY, JSON.stringify(all));
+  } catch (e) {}
+}
 
 function PopupLyrics() {
   // Keep currentSong and currentTime as separate states so updating one
@@ -11,12 +32,11 @@ function PopupLyrics() {
   const [currentSong, setCurrentSong] = useState(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [lyricsData, setLyricsData] = useState(null);
+  const [match, setMatch] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const activeRef = useRef(null);
 
-  // Subscribe to player state from main window. Only push values that actually
-  // changed so we don't re-render the lyrics list on every audio tick.
   useEffect(() => {
     const cleanup = subscribe((msg) => {
       if (msg?.type !== 'state') return;
@@ -30,33 +50,42 @@ function PopupLyrics() {
     return cleanup;
   }, []);
 
-  // Fetch lyrics whenever the song changes
-  useEffect(() => {
-    const song = currentSong;
-    if (!song) { setLyricsData(null); setError(''); return; }
-    let cancelled = false;
-    setLoading(true);
-    setError('');
-    setLyricsData(null);
-    (async () => {
-      try {
-        const res = await fetch(`${API_BASE}/lyrics/fetch`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            title: song.title,
-            file: decodeURIComponent((song.url || '').split('/').pop() || ''),
-          }),
+  const fetchLyrics = useCallback(async (song, opts = {}) => {
+    const songKey = getSongKey(song);
+    const rejectedIds = loadRejected(songKey);
+    setLoading(true); setError(''); setLyricsData(null); setMatch(null);
+    try {
+      const res = await fetch(`${API_BASE}/lyrics/fetch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: song.title,
+          file: decodeURIComponent((song.url || '').split('/').pop() || ''),
+          rejectedIds,
+          force: !!opts.force,
+        }),
+      });
+      const data = await res.json();
+      if (data.lyrics?.lines?.length) {
+        setLyricsData(data.lyrics);
+        setMatch({
+          sourceId: data.sourceId,
+          totalMatches: data.totalMatches,
+          currentIndex: data.currentIndex,
         });
-        const data = await res.json();
-        if (cancelled) return;
-        if (data.lyrics?.lines?.length) setLyricsData(data.lyrics);
-        else setError('Lyrics not found for this song');
-      } catch (e) { if (!cancelled) setError('Could not load lyrics'); }
-      finally { if (!cancelled) setLoading(false); }
-    })();
-    return () => { cancelled = true; };
-  }, [currentSong]);
+      } else {
+        setError(rejectedIds.length > 0
+          ? 'No more matches to try'
+          : 'Lyrics not found for this song');
+      }
+    } catch (e) { setError('Could not load lyrics'); }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => {
+    if (!currentSong) { setLyricsData(null); setMatch(null); setError(''); return; }
+    fetchLyrics(currentSong);
+  }, [currentSong, fetchLyrics]);
 
   const isSynced = lyricsData?.synced;
   const lines = lyricsData?.lines || [];
@@ -77,6 +106,26 @@ function PopupLyrics() {
   }, [activeIndex, isSynced]);
 
   const onLineClick = (time) => { if (isSynced) broadcastAction('seek', time); };
+
+  const skipMatch = useCallback(() => {
+    if (!currentSong || !match?.sourceId) return;
+    const key = getSongKey(currentSong);
+    const next = Array.from(new Set([...loadRejected(key), match.sourceId]));
+    saveRejected(key, next);
+    fetchLyrics(currentSong, { force: true });
+  }, [currentSong, match, fetchLyrics]);
+
+  const markWrong = useCallback(() => {
+    if (!currentSong || !match?.sourceId) return;
+    if (!window.confirm(
+      `Mark these lyrics as wrong for "${currentSong.title}"?\n\n` +
+      `We won't show this match again.`
+    )) return;
+    const key = getSongKey(currentSong);
+    const next = Array.from(new Set([...loadRejected(key), match.sourceId]));
+    saveRejected(key, next);
+    fetchLyrics(currentSong, { force: true });
+  }, [currentSong, match, fetchLyrics]);
 
   return (
     <div className={styles.wrap}>
@@ -113,6 +162,32 @@ function PopupLyrics() {
           </div>
         )}
       </div>
+
+      {match && match.totalMatches > 0 && (
+        <div className={styles.matchBar}>
+          <span className={styles.matchSource}>
+            lrclib · {match.currentIndex}/{match.totalMatches}
+          </span>
+          <div className={styles.matchActions}>
+            <button
+              className={styles.matchBtn}
+              onClick={skipMatch}
+              disabled={loading || match.totalMatches <= match.currentIndex}
+              title="Try the next match"
+            >
+              <IoPlaySkipForward /> Next
+            </button>
+            <button
+              className={styles.matchBtn}
+              onClick={markWrong}
+              disabled={loading}
+              title="Mark these lyrics as wrong"
+            >
+              <IoThumbsDown /> Wrong
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

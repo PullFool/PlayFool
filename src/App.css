@@ -228,6 +228,11 @@ body {
 /* Mini mode layout: stack vertically */
 .app.mini-mode { flex-direction: column !important; }
 
+/* Mini-mode opacity. The CSS variable --mini-opacity is set by Player.js and
+   only applies while .mini-mode is active. Goes back to 100% in full mode. */
+.app.mini-mode { opacity: var(--mini-opacity, 1); transition: opacity 150ms ease; }
+.app.mini-mode:hover { opacity: 1; }
+
 /* Show video panel as top section in mini mode */
 .app.mini-mode [class*="VideoPanel_panel"] {
   position: static !important;
