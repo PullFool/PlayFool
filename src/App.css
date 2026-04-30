@@ -36,7 +36,7 @@
 
 body {
   font-family: 'Inter', -apple-system, sans-serif;
-  background: var(--bg-primary);
+  background: transparent;
   color: var(--text-primary);
   overflow: hidden;
   height: 100vh;
@@ -45,6 +45,10 @@ body {
 .app {
   display: flex;
   height: 100vh;
+  padding-top: 32px;
+  background: var(--bg-primary);
+  border-radius: 8px;
+  overflow: hidden;
 }
 
 .main-content {
@@ -228,9 +232,15 @@ body {
 /* Mini mode layout: stack vertically */
 .app.mini-mode { flex-direction: column !important; }
 
-/* Mini-mode opacity. The CSS variable --mini-opacity is set by Player.js and
-   only applies while .mini-mode is active. Goes back to 100% in full mode. */
-.app.mini-mode { opacity: var(--mini-opacity, 1) !important; transition: opacity 150ms ease; }
+/* Mini-mode: drop the solid app background so the OS window's transparent
+   chroma key shows through to the desktop. The CSS variable --mini-opacity
+   (set by Player.js) controls how visible the player bar's own background is.
+   Buttons, text, and album art keep full opacity. */
+.app.mini-mode {
+  background: rgba(20, 20, 20, var(--mini-opacity, 1)) !important;
+  transition: background 150ms ease;
+  padding-top: 24px;
+}
 
 /* Show video panel as top section in mini mode */
 .app.mini-mode [class*="VideoPanel_panel"] {
