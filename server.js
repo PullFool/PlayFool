@@ -857,10 +857,12 @@ app.post('/api/lyrics/fetch', async (req, res) => {
   const lrcPath = path.join(lyricsDir, basename + '.lrc');
 
   if (!force && fs.existsSync(lrcPath)) {
-    const meta = readLyricsMeta(lrcPath) || {};
-    // If the cached match has been rejected, ignore the cache and refetch.
-    const cachedRejected = meta.sourceId && rejectedIds.map(String).includes(String(meta.sourceId));
-    if (!cachedRejected) {
+    const meta = readLyricsMeta(lrcPath);
+    // Only honor the cache if we have meta (so the frontend can show the
+    // match counter and offer Try next / Wrong). Old cached .lrc files
+    // without meta fall through and refetch to populate the sidecar.
+    const cachedRejected = meta?.sourceId && rejectedIds.map(String).includes(String(meta.sourceId));
+    if (meta && meta.sourceId && !cachedRejected) {
       const content = fs.readFileSync(lrcPath, 'utf-8');
       return res.json({ lyrics: parseLrc(content), ...meta });
     }
