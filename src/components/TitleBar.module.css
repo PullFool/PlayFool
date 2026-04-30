@@ -1,0 +1,57 @@
+.bar {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 32px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+  -webkit-app-region: drag;
+  z-index: 1000;
+}
+
+.dragRegion {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding: 0 12px;
+  -webkit-app-region: drag;
+}
+
+.title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  letter-spacing: 0.4px;
+}
+
+.controls {
+  display: flex;
+  height: 100%;
+  -webkit-app-region: no-drag;
+}
+
+.btn {
+  width: 46px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 16px;
+  transition: background 0.12s;
+}
+
+.btn:hover { background: var(--bg-hover, rgba(255, 255, 255, 0.08)); color: var(--text-primary); }
+.closeBtn:hover { background: #e81123; color: #fff; }
+
+/* Mini-mode: shrink the title bar to a thin grab strip and hide the title text. */
+:global(.app.mini-mode) .bar { height: 24px; background: transparent; border-bottom: none; }
+:global(.app.mini-mode) .title { display: none; }
+:global(.app.mini-mode) .btn { width: 38px; height: 24px; font-size: 14px; }

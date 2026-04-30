@@ -12,7 +12,8 @@
     "min_height": 600,
     "icon": "public/icon.png",
     "toolbar": false,
-    "frame": true
+    "frame": false,
+    "transparent": true
   },
   "homepage": "./",
   "dependencies": {
