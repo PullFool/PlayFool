@@ -18,23 +18,51 @@ const secondaryBtn = {
 function SyncDialog({ open, onClose }) {
   const [info, setInfo] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [debug, setDebug] = useState('');
 
   const refresh = useCallback(async () => {
     try {
       const r = await fetch('/api/sync/settings');
-      const j = await r.json();
+      const text = await r.text();
+      let j;
+      try { j = JSON.parse(text); } catch (parseErr) {
+        setDebug(`Settings parse error: ${parseErr.message}\nRaw: ${text.slice(0, 200)}`);
+        setInfo({ error: 'Bad response' });
+        return;
+      }
       setInfo(j);
     } catch (e) {
+      setDebug(`Settings fetch error: ${e.message}`);
       setInfo({ error: e.message });
     }
   }, []);
 
-  useEffect(() => { if (open) refresh(); }, [open, refresh]);
+  useEffect(() => {
+    if (!open) return;
+    setDebug('');
+    refresh();
+  }, [open, refresh]);
 
   const enable = async () => {
     setBusy(true);
-    await fetch('/api/sync/enable', { method: 'POST' });
-    await refresh();
+    setDebug('');
+    try {
+      const r = await fetch('/api/sync/enable', { method: 'POST' });
+      const text = await r.text();
+      if (!r.ok) {
+        setDebug(`Enable failed (${r.status}): ${text.slice(0, 300)}`);
+      } else {
+        try {
+          const j = JSON.parse(text);
+          if (!j.ok) setDebug(`Enable returned: ${text.slice(0, 300)}`);
+        } catch (e) {
+          setDebug(`Enable parse error: ${text.slice(0, 300)}`);
+        }
+      }
+      await refresh();
+    } catch (e) {
+      setDebug(`Enable threw: ${e.message}`);
+    }
     setBusy(false);
   };
 
@@ -93,6 +121,17 @@ function SyncDialog({ open, onClose }) {
             <button onClick={enable} disabled={busy} style={primaryBtn}>
               <IoSync /> Allow sync on this network
             </button>
+          </div>
+        )}
+
+        {debug && (
+          <div style={{
+            marginTop: 12, padding: 10, borderRadius: 6,
+            background: 'rgba(232, 17, 35, 0.08)', border: '1px solid rgba(232, 17, 35, 0.4)',
+            fontSize: 11, fontFamily: 'monospace', color: '#ff8a8a',
+            whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+          }}>
+            {debug}
           </div>
         )}
 
