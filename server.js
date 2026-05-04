@@ -1487,8 +1487,11 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
-// Catch-all: serve React app for client-side routing
-app.get('*', (req, res) => {
+// Catch-all: serve React app for client-side routing.
+// Pass /api/* through so route handlers registered later in this file
+// (sync endpoints, etc.) still match. Anything else → React index.html.
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api/')) return next();
   const indexPath = path.join(buildDir, 'index.html');
   if (fs.existsSync(indexPath)) res.sendFile(indexPath);
   else res.status(404).send('Build not found. Run: npm run build');
