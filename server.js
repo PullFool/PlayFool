@@ -1591,8 +1591,13 @@ function persistSyncState() {
 
 function genPin() {
   const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // skip ambiguous chars (0/O, 1/I/L)
+  // Math.random fallback for any environment where crypto.randomInt is missing.
+  const pickIdx = (n) => {
+    if (typeof crypto.randomInt === 'function') return crypto.randomInt(n);
+    return Math.floor(Math.random() * n);
+  };
   let out = '';
-  for (let i = 0; i < 6; i++) out += alphabet[crypto.randomInt(alphabet.length)];
+  for (let i = 0; i < 6; i++) out += alphabet[pickIdx(alphabet.length)];
   return out;
 }
 
@@ -1633,22 +1638,34 @@ app.get('/api/sync/settings', (req, res) => {
 });
 
 app.post('/api/sync/enable', (req, res) => {
-  if (!syncState.token) syncState.token = genPin();
-  syncState.enabled = true;
-  persistSyncState();
-  res.json({ ok: true, token: syncState.token });
+  try {
+    if (!syncState.token) syncState.token = genPin();
+    syncState.enabled = true;
+    persistSyncState();
+    res.json({ ok: true, token: syncState.token });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message, where: 'enable' });
+  }
 });
 
 app.post('/api/sync/disable', (req, res) => {
-  syncState.enabled = false;
-  persistSyncState();
-  res.json({ ok: true });
+  try {
+    syncState.enabled = false;
+    persistSyncState();
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message, where: 'disable' });
+  }
 });
 
 app.post('/api/sync/regenerate', (req, res) => {
-  syncState.token = genPin();
-  persistSyncState();
-  res.json({ ok: true, token: syncState.token });
+  try {
+    syncState.token = genPin();
+    persistSyncState();
+    res.json({ ok: true, token: syncState.token });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message, where: 'regenerate' });
+  }
 });
 
 // Mobile-facing endpoints below — all token-gated.
