@@ -184,6 +184,28 @@ function SyncDialog({ open, onClose }) {
               )}
             </div>
 
+            {address && token && (
+              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
+                <div style={{
+                  background: '#fff', padding: 10, borderRadius: 8,
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+                }}>
+                  <img
+                    alt="Pair QR code"
+                    width={180}
+                    height={180}
+                    src={
+                      'https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=' +
+                      encodeURIComponent(`playfool://pair?a=${address}:${port}&p=${token}`)
+                    }
+                  />
+                  <span style={{ fontSize: 10, color: '#444', fontWeight: 600 }}>
+                    Scan this from your phone
+                  </span>
+                </div>
+              </div>
+            )}
+
             {info?.peers && info.peers.length > 0 && (
               <div style={{ marginBottom: 12 }}>
                 <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Recent devices:</div>
