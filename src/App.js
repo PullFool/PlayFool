@@ -3,7 +3,6 @@ import { HashRouter as Router, Routes, Route } from 'react-router-dom';
 import { PlayerProvider, usePlayer } from './context/PlayerContext';
 import ErrorBoundary from './components/ErrorBoundary';
 import Sidebar from './components/Sidebar';
-import TitleBar from './components/TitleBar';
 import Player from './components/Player';
 import NowPlaying from './components/NowPlaying';
 import Lyrics from './components/Lyrics';
@@ -112,7 +111,6 @@ function App() {
         {!tourDone && <Tour onComplete={() => setTourDone(true)} />}
         <Router>
           <div className="app">
-            <TitleBar />
             <UpdateChecker />
             <Sidebar />
             <main className="main-content">

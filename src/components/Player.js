@@ -1,24 +1,7 @@
-import React, { useRef, useCallback, useState, useEffect } from 'react';
+import React, { useRef, useCallback, useState } from 'react';
 import { usePlayer } from '../context/PlayerContext';
-import { IoPlay, IoPause, IoPlaySkipForward, IoPlaySkipBack, IoPlayForward, IoPlayBack, IoVolumeHigh, IoVolumeMute, IoMusicalNotes, IoDocumentText, IoVideocam, IoOptions, IoContract, IoExpand, IoList, IoEye } from 'react-icons/io5';
+import { IoPlay, IoPause, IoPlaySkipForward, IoPlaySkipBack, IoPlayForward, IoPlayBack, IoVolumeHigh, IoVolumeMute, IoMusicalNotes, IoDocumentText, IoVideocam, IoOptions, IoContract, IoExpand, IoList } from 'react-icons/io5';
 import styles from './Player.module.css';
-
-const OPACITY_KEY = 'playfool_mini_opacity';
-const OPACITY_LEVELS = [1, 0.85, 0.7, 0.55, 0.4]; // cycle order
-
-function applyOpacity(level) {
-  const appEl = document.querySelector('.app');
-  if (!appEl) return;
-  appEl.style.setProperty('--mini-opacity', String(level));
-  // Also try real window alpha-blend if NW.js exposes it (may silently fail
-  // on older versions; the CSS variable does the visible work either way).
-  try {
-    if (window.nw?.Window?.get) {
-      const win = window.nw.Window.get();
-      if (typeof win.setAlphaBlend === 'function') win.setAlphaBlend(level < 1);
-    }
-  } catch (e) {}
-}
 
 function Player({ showLyrics, onToggleLyrics, showEqualizer, onToggleEqualizer, showQueue, onToggleQueue }) {
   const {
@@ -29,48 +12,9 @@ function Player({ showLyrics, onToggleLyrics, showEqualizer, onToggleEqualizer, 
 
   const seekBarRef = useRef(null);
   const [isMini, setIsMini] = useState(false);
-  const [opacity, setOpacity] = useState(() => {
-    const v = parseFloat(localStorage.getItem(OPACITY_KEY) || '1');
-    return Number.isFinite(v) && v > 0.2 && v <= 1 ? v : 1;
-  });
   // Track which popup types we have open so the close-on-exit-mini logic
   // knows which inline panels to re-open.
   const openPopupTypes = useRef(new Set());
-
-  // Apply opacity whenever it or the mini-mode state changes. Full mode is
-  // always 100% — opacity only takes effect while the mini player is showing.
-  useEffect(() => {
-    applyOpacity(isMini ? opacity : 1);
-  }, [isMini, opacity]);
-
-  const setOpacityAndSave = (level) => {
-    setOpacity(level);
-    try { localStorage.setItem(OPACITY_KEY, String(level)); } catch (e) {}
-  };
-
-  const cycleOpacity = () => {
-    const i = OPACITY_LEVELS.indexOf(opacity);
-    const next = OPACITY_LEVELS[(i + 1) % OPACITY_LEVELS.length];
-    setOpacityAndSave(next);
-  };
-
-  // Right-click anywhere in the mini player → native NW menu with
-  // precise opacity choices. Falls back to the cycle button if NW is unavailable.
-  const handleContextMenu = (e) => {
-    if (!isMini) return;
-    if (!window.nw?.Menu) return;
-    e.preventDefault();
-    try {
-      const menu = new window.nw.Menu();
-      [1, 0.85, 0.7, 0.55, 0.4].forEach((level) => {
-        menu.append(new window.nw.MenuItem({
-          label: `Opacity ${Math.round(level * 100)}%${level === opacity ? '  ✓' : ''}`,
-          click: () => setOpacityAndSave(level),
-        }));
-      });
-      menu.popup(e.clientX, e.clientY);
-    } catch (err) { /* no-op, cycle button still works */ }
-  };
 
   // Ask the server to open a floating panel window. nw.Window.open lives in the
   // node-main context which has full NW.js access; the React app talks to it
@@ -108,7 +52,7 @@ function Player({ showLyrics, onToggleLyrics, showEqualizer, onToggleEqualizer, 
   }, [duration, seekTo]);
 
   return (
-    <div className={styles.bar} onContextMenu={handleContextMenu}>
+    <div className={styles.bar}>
       {/* Lyrics ticker shown only in mini mode (CSS-gated by .app.mini-mode) */}
 
       {currentSong && (
@@ -190,16 +134,6 @@ function Player({ showLyrics, onToggleLyrics, showEqualizer, onToggleEqualizer, 
           >
             <IoList />
           </button>
-          {isMini && (
-            <button
-              className={styles.lyricsBtn}
-              onClick={cycleOpacity}
-              title={`Mini opacity: ${Math.round(opacity * 100)}% — click to cycle (or right-click for menu)`}
-              style={{ opacity: 0.55 + opacity * 0.45 }}
-            >
-              <IoEye />
-            </button>
-          )}
           <button
             className={styles.lyricsBtn}
             onClick={async () => {

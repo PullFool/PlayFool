@@ -1533,67 +1533,27 @@ function killAllChildProcesses() {
   activeProcesses.clear();
 }
 
-// Tray + window-control wiring. Runs only when nw is available (i.e. NW.js
-// runtime, not plain node). Minimize button hides to tray; close button
-// performs full quit + child-process cleanup.
-let mainWindow = null;
-let tray = null;
-
-function setupTrayAndWindow() {
-  if (typeof nw === 'undefined' || !nw.Window || typeof nw.Window.get !== 'function') return;
-  let win;
-  try { win = nw.Window.get(); } catch (e) { return; }
-  if (!win) return;
-  mainWindow = win;
-
-  const showWindow = () => { try { win.show(); win.focus(); } catch (e) {} };
-
-  // Build the tray. `assets/icon.png` is bundled with the app.
-  try {
-    const iconPath = path.join(__dirname, 'public', 'icon.png');
-    tray = new nw.Tray({ title: 'PlayFool', icon: iconPath, tooltip: 'PlayFool' });
-    const menu = new nw.Menu();
-    menu.append(new nw.MenuItem({ label: 'Show PlayFool', click: showWindow }));
-    menu.append(new nw.MenuItem({ type: 'separator' }));
-    menu.append(new nw.MenuItem({ label: 'Play / Pause', click: () => {
-      try { win.window?.dispatchEvent(new KeyboardEvent('keydown', { key: ' ' })); } catch (e) {}
-    }}));
-    menu.append(new nw.MenuItem({ label: 'Next', click: () => {
-      try { win.window?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', ctrlKey: true })); } catch (e) {}
-    }}));
-    menu.append(new nw.MenuItem({ label: 'Previous', click: () => {
-      try { win.window?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', ctrlKey: true })); } catch (e) {}
-    }}));
-    menu.append(new nw.MenuItem({ type: 'separator' }));
-    menu.append(new nw.MenuItem({ label: 'Quit PlayFool', click: () => {
-      killAllChildProcesses();
-      try { win.close(true); } catch (e) {}
-      setTimeout(() => process.exit(0), 500);
-    }}));
-    tray.menu = menu;
-    tray.on('click', showWindow);
-  } catch (e) { /* tray creation failed — non-fatal */ }
-
-  // Real close: kill children, drop tray, exit.
-  if (typeof win.on === 'function') {
-    win.on('close', function() {
-      killAllChildProcesses();
-      try { if (tray) tray.remove(); } catch (e) {}
-      if (activeServer) activeServer.close(() => process.exit(0));
-      this.close(true);
-      setTimeout(() => process.exit(0), 2000);
-    });
+// Shut down server and force exit when NW.js window closes.
+// NOTE: nw.Window.get() throws "No current window" when server.js runs as node-main,
+// so guard it. Window close is also handled in index.html. SIGINT/SIGTERM/exit
+// handlers below are the reliable cleanup path.
+try {
+  if (typeof nw !== 'undefined' && nw.Window && typeof nw.Window.get === 'function') {
+    const win = nw.Window.get();
+    if (win && typeof win.on === 'function') {
+      win.on('close', function() {
+        killAllChildProcesses();
+        if (activeServer) {
+          activeServer.close(() => process.exit(0));
+        }
+        this.close(true);
+        setTimeout(() => process.exit(0), 2000);
+      });
+    }
   }
+} catch (e) {
+  // Running as node-main with no window context — rely on process signals instead
 }
-
-setupTrayAndWindow();
-
-// API: hide the window (used by the custom title bar's minimize button).
-// We hide instead of OS-minimize so the tray is the only place the app lives.
-app.post('/api/window/minimize', (req, res) => {
-  try { if (mainWindow) mainWindow.hide(); res.json({ ok: true }); }
-  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
-});
 
 // Safety net: always kill child processes on any exit path
 process.on('exit', () => {
