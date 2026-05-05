@@ -32,6 +32,7 @@ function SyncDialog({ open, onClose }) {
   const [status, setStatus] = useState('');
   const [counts, setCounts] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState(null);
 
   useEffect(() => {
     if (!open) return;
@@ -80,6 +81,22 @@ function SyncDialog({ open, onClose }) {
     setCode(c);
   };
 
+  // Poll the server-side progress while the run is in flight, so the dialog
+  // can show "Uploading 3 of 12: song.mp3 (47%)" instead of just "Syncing...".
+  useEffect(() => {
+    if (!busy) { setProgress(null); return; }
+    const poll = async () => {
+      try {
+        const r = await fetch('/api/cloud-sync/progress');
+        const j = await r.json();
+        if (j.active) setProgress(j); else setProgress(null);
+      } catch (e) { /* keep last */ }
+    };
+    poll();
+    const id = setInterval(poll, 500);
+    return () => clearInterval(id);
+  }, [busy]);
+
   const onSync = async () => {
     setBusy(true); setStatus('Syncing...');
     try {
@@ -90,7 +107,8 @@ function SyncDialog({ open, onClose }) {
       });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || 'sync failed');
-      setStatus(`✓ ${j.uploaded} up · ${j.downloaded} down · ${j.errors} failed`);
+      const errStr = j.errors > 0 && j.lastError ? ` (last: ${j.lastError.slice(0, 80)})` : '';
+      setStatus(`✓ ${j.uploaded} up · ${j.downloaded} down · ${j.errors} failed${errStr}`);
       await refreshCounts(code);
     } catch (e) { setStatus(e.message); }
     setBusy(false);
@@ -149,6 +167,40 @@ function SyncDialog({ open, onClose }) {
             </div>
           )}
         </div>
+
+        {progress && progress.active && (
+          <div style={{
+            background: 'var(--bg-card, #1a1a1a)', borderRadius: 8, padding: 12,
+            border: '1px solid var(--border)', marginBottom: 12,
+          }}>
+            <div style={{ fontSize: 12, color: 'var(--text-primary)', fontWeight: 600 }}>
+              {progress.stage === 'upload' ? '⬆ Uploading' :
+               progress.stage === 'download' ? '⬇ Downloading' :
+               'Listing'}
+              {progress.total ? ` ${progress.i} of ${progress.total}` : ''}
+            </div>
+            {!!progress.file && (
+              <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {progress.file}
+              </div>
+            )}
+            {progress.totalBytes > 0 && (
+              <div style={{ marginTop: 8, height: 4, borderRadius: 2, background: 'var(--border)', overflow: 'hidden' }}>
+                <div style={{
+                  width: `${Math.round((progress.bytes / progress.totalBytes) * 100)}%`,
+                  height: '100%', background: '#1ed760', transition: 'width 200ms ease',
+                }} />
+              </div>
+            )}
+            {progress.totalBytes > 0 && (
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4, textAlign: 'right' }}>
+                {Math.round((progress.bytes / progress.totalBytes) * 100)}%
+                {' · '}
+                {(progress.bytes / 1024 / 1024).toFixed(1)} / {(progress.totalBytes / 1024 / 1024).toFixed(1)} MB
+              </div>
+            )}
+          </div>
+        )}
 
         {!!status && (
           <div style={{ fontSize: 12, color: status.startsWith('✓') ? '#1ed760' : 'var(--text-secondary)', marginBottom: 12, textAlign: 'center' }}>
