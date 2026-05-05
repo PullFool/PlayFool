@@ -1610,13 +1610,16 @@ async function relayDelete(relay, code, id) {
   });
 }
 
-async function relayDownload(relay, code, id, destPath) {
+async function relayDownload(relay, code, id, destPath, onBytes) {
   return new Promise((resolve, reject) => {
     const u = new URL(`${relay}/v1/file/${encodeURIComponent(id)}?code=${encodeURIComponent(code)}`);
     const lib = u.protocol === 'https:' ? https : http;
     const out = fs.createWriteStream(destPath);
     const req = lib.request({ hostname: u.hostname, path: u.pathname + u.search, method: 'GET', timeout: 60000 }, (res) => {
       if (res.statusCode !== 200) { out.destroy(); try { fs.unlinkSync(destPath); } catch (_) {} return reject(new Error(`HTTP ${res.statusCode}`)); }
+      const total = parseInt(res.headers['content-length'] || '0', 10) || 0;
+      let received = 0;
+      res.on('data', (chunk) => { received += chunk.length; if (onBytes) onBytes(received, total); });
       res.pipe(out);
       out.on('finish', () => resolve());
       out.on('error', reject);
@@ -1627,7 +1630,7 @@ async function relayDownload(relay, code, id, destPath) {
   });
 }
 
-async function relayUpload(relay, code, name, srcPath) {
+async function relayUpload(relay, code, name, srcPath, onBytes) {
   return new Promise((resolve, reject) => {
     const stat = fs.statSync(srcPath);
     const u = new URL(`${relay}/v1/upload?code=${encodeURIComponent(code)}&name=${encodeURIComponent(name)}&size=${stat.size}`);
@@ -1648,9 +1651,21 @@ async function relayUpload(relay, code, name, srcPath) {
     });
     req.on('error', reject);
     req.on('timeout', () => req.destroy(new Error('upload timeout')));
-    fs.createReadStream(srcPath).pipe(req);
+    let sent = 0;
+    const stream = fs.createReadStream(srcPath);
+    stream.on('data', (chunk) => { sent += chunk.length; if (onBytes) onBytes(sent, stat.size); });
+    stream.pipe(req);
   });
 }
+
+// Live progress for the cloud sync — SyncDialog polls /api/cloud-sync/progress
+// to show a per-file bar while /api/cloud-sync/run is still running.
+let cloudSyncProgress = { active: false };
+function setProgress(p) { cloudSyncProgress = p; }
+
+app.get('/api/cloud-sync/progress', (req, res) => {
+  res.json(cloudSyncProgress);
+});
 
 app.post('/api/cloud-sync/run', async (req, res) => {
   const code = String(req.body?.code || '').toUpperCase();
@@ -1658,14 +1673,14 @@ app.post('/api/cloud-sync/run', async (req, res) => {
   if (!code || !relay) return res.status(400).json({ error: 'missing_code_or_relay' });
 
   let uploaded = 0, downloaded = 0, errors = 0;
+  let lastError = '';
   try {
-    // List remote
+    setProgress({ active: true, stage: 'list', i: 0, total: 0 });
     const remoteData = await relayList(relay, code);
     const remote = remoteData.files || [];
     const remoteKey = (f) => `${f.name}|${f.size}`;
     const remoteSet = new Set(remote.map(remoteKey));
 
-    // List local
     const localFiles = fs.existsSync(downloadsDir)
       ? fs.readdirSync(downloadsDir).filter((f) => /\.(mp3|m4a|opus|webm|ogg|wav)$/i.test(f))
       : [];
@@ -1675,30 +1690,41 @@ app.post('/api/cloud-sync/run', async (req, res) => {
     });
     const localSet = new Set(localMeta.map(remoteKey));
 
-    // Download cloud → local (if not already local)
-    for (const f of remote) {
-      if (localSet.has(remoteKey(f))) continue;
+    const toDownload = remote.filter((f) => !localSet.has(remoteKey(f)));
+    const toUpload = localMeta.filter((f) => !remoteSet.has(remoteKey(f)));
+    const totalCount = toDownload.length + toUpload.length;
+    let i = 0;
+
+    for (const f of toDownload) {
+      i++;
       const safeName = path.basename(f.name).replace(/[^\w.\- ()]/g, '_');
       const dest = path.join(downloadsDir, safeName);
-      if (fs.existsSync(dest)) continue;
+      if (fs.existsSync(dest)) { downloaded++; continue; }
+      setProgress({ active: true, stage: 'download', file: f.name, i, total: totalCount, bytes: 0, totalBytes: f.size || 0 });
       try {
-        await relayDownload(relay, code, f.id, dest);
+        await relayDownload(relay, code, f.id, dest, (sent, total) => {
+          setProgress({ active: true, stage: 'download', file: f.name, i, total: totalCount, bytes: sent, totalBytes: total });
+        });
         await relayDelete(relay, code, f.id);
         downloaded++;
-      } catch (e) { errors++; }
+      } catch (e) { errors++; lastError = e.message; }
     }
 
-    // Upload local → cloud (if not already in cloud)
-    for (const f of localMeta) {
-      if (remoteSet.has(remoteKey(f))) continue;
+    for (const f of toUpload) {
+      i++;
+      setProgress({ active: true, stage: 'upload', file: f.name, i, total: totalCount, bytes: 0, totalBytes: f.size });
       try {
-        await relayUpload(relay, code, f.name, f.full);
+        await relayUpload(relay, code, f.name, f.full, (sent, total) => {
+          setProgress({ active: true, stage: 'upload', file: f.name, i, total: totalCount, bytes: sent, totalBytes: total });
+        });
         uploaded++;
-      } catch (e) { errors++; }
+      } catch (e) { errors++; lastError = e.message; }
     }
 
-    res.json({ ok: true, uploaded, downloaded, errors });
+    setProgress({ active: false });
+    res.json({ ok: true, uploaded, downloaded, errors, lastError });
   } catch (e) {
+    setProgress({ active: false });
     res.status(500).json({ error: 'sync_failed', detail: e.message });
   }
 });
