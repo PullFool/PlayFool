@@ -70,9 +70,17 @@ function SyncDialog({ open, onClose }) {
     setBusy(false);
   };
 
-  const onDisconnect = () => {
+  const onDisconnect = async () => {
+    // If a sync is currently running, ask the server to stop after the
+    // current file finishes. Don't wait — clear UI state immediately.
+    if (busy) {
+      try { await fetch('/api/cloud-sync/cancel', { method: 'POST' }); } catch (e) {}
+      setStatus('Cancelled');
+    } else {
+      setStatus('');
+    }
     localStorage.removeItem(CODE_KEY);
-    setStatus('');
+    setCode('');
     setCounts(null);
   };
 
@@ -215,8 +223,8 @@ function SyncDialog({ open, onClose }) {
             </button>
           ) : (
             <>
-              <button onClick={onDisconnect} disabled={busy} style={secondaryBtn}>
-                Disconnect
+              <button onClick={onDisconnect} style={secondaryBtn}>
+                {busy ? 'Stop & disconnect' : 'Disconnect'}
               </button>
               <button onClick={onSync} disabled={busy} style={primaryBtn}>
                 <IoSync /> Sync now
