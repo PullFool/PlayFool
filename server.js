@@ -1575,6 +1575,134 @@ process.on('SIGTERM', () => {
   process.exit(0);
 });
 
+// ===== Cloud Sync (Cloudflare relay) =====
+// Talks to the same Worker the mobile app uses. Files are uploaded to R2 keyed
+// by a user-shared sync code, deleted on receiver confirm.
+
+async function relayList(relay, code) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(`${relay}/v1/list?code=${encodeURIComponent(code)}`);
+    const lib = u.protocol === 'https:' ? https : http;
+    const req = lib.request({ hostname: u.hostname, path: u.pathname + u.search, method: 'GET', timeout: 15000 }, (res) => {
+      let body = '';
+      res.on('data', (c) => { body += c; });
+      res.on('end', () => {
+        try { resolve(JSON.parse(body)); } catch (e) { reject(new Error('bad relay response')); }
+      });
+    });
+    req.on('error', reject);
+    req.on('timeout', () => req.destroy(new Error('timeout')));
+    req.end();
+  });
+}
+
+async function relayDelete(relay, code, id) {
+  return new Promise((resolve) => {
+    const u = new URL(`${relay}/v1/confirm?code=${encodeURIComponent(code)}&id=${encodeURIComponent(id)}`);
+    const lib = u.protocol === 'https:' ? https : http;
+    const req = lib.request({ hostname: u.hostname, path: u.pathname + u.search, method: 'POST', timeout: 10000 }, (res) => {
+      res.on('data', () => {});
+      res.on('end', () => resolve());
+    });
+    req.on('error', () => resolve());
+    req.on('timeout', () => { req.destroy(); resolve(); });
+    req.end();
+  });
+}
+
+async function relayDownload(relay, code, id, destPath) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(`${relay}/v1/file/${encodeURIComponent(id)}?code=${encodeURIComponent(code)}`);
+    const lib = u.protocol === 'https:' ? https : http;
+    const out = fs.createWriteStream(destPath);
+    const req = lib.request({ hostname: u.hostname, path: u.pathname + u.search, method: 'GET', timeout: 60000 }, (res) => {
+      if (res.statusCode !== 200) { out.destroy(); try { fs.unlinkSync(destPath); } catch (_) {} return reject(new Error(`HTTP ${res.statusCode}`)); }
+      res.pipe(out);
+      out.on('finish', () => resolve());
+      out.on('error', reject);
+    });
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(new Error('timeout')); });
+    req.end();
+  });
+}
+
+async function relayUpload(relay, code, name, srcPath) {
+  return new Promise((resolve, reject) => {
+    const stat = fs.statSync(srcPath);
+    const u = new URL(`${relay}/v1/upload?code=${encodeURIComponent(code)}&name=${encodeURIComponent(name)}&size=${stat.size}`);
+    const lib = u.protocol === 'https:' ? https : http;
+    const req = lib.request({
+      hostname: u.hostname,
+      path: u.pathname + u.search,
+      method: 'POST',
+      timeout: 120000,
+      headers: { 'Content-Type': 'application/octet-stream', 'Content-Length': stat.size },
+    }, (res) => {
+      let body = '';
+      res.on('data', (c) => { body += c; });
+      res.on('end', () => {
+        if (res.statusCode >= 400) return reject(new Error(`HTTP ${res.statusCode}: ${body.slice(0, 120)}`));
+        try { resolve(JSON.parse(body)); } catch (e) { resolve({}); }
+      });
+    });
+    req.on('error', reject);
+    req.on('timeout', () => req.destroy(new Error('upload timeout')));
+    fs.createReadStream(srcPath).pipe(req);
+  });
+}
+
+app.post('/api/cloud-sync/run', async (req, res) => {
+  const code = String(req.body?.code || '').toUpperCase();
+  const relay = String(req.body?.relay || '');
+  if (!code || !relay) return res.status(400).json({ error: 'missing_code_or_relay' });
+
+  let uploaded = 0, downloaded = 0, errors = 0;
+  try {
+    // List remote
+    const remoteData = await relayList(relay, code);
+    const remote = remoteData.files || [];
+    const remoteKey = (f) => `${f.name}|${f.size}`;
+    const remoteSet = new Set(remote.map(remoteKey));
+
+    // List local
+    const localFiles = fs.existsSync(downloadsDir)
+      ? fs.readdirSync(downloadsDir).filter((f) => /\.(mp3|m4a|opus|webm|ogg|wav)$/i.test(f))
+      : [];
+    const localMeta = localFiles.map((name) => {
+      const full = path.join(downloadsDir, name);
+      return { name, size: fs.statSync(full).size, full };
+    });
+    const localSet = new Set(localMeta.map(remoteKey));
+
+    // Download cloud → local (if not already local)
+    for (const f of remote) {
+      if (localSet.has(remoteKey(f))) continue;
+      const safeName = path.basename(f.name).replace(/[^\w.\- ()]/g, '_');
+      const dest = path.join(downloadsDir, safeName);
+      if (fs.existsSync(dest)) continue;
+      try {
+        await relayDownload(relay, code, f.id, dest);
+        await relayDelete(relay, code, f.id);
+        downloaded++;
+      } catch (e) { errors++; }
+    }
+
+    // Upload local → cloud (if not already in cloud)
+    for (const f of localMeta) {
+      if (remoteSet.has(remoteKey(f))) continue;
+      try {
+        await relayUpload(relay, code, f.name, f.full);
+        uploaded++;
+      } catch (e) { errors++; }
+    }
+
+    res.json({ ok: true, uploaded, downloaded, errors });
+  } catch (e) {
+    res.status(500).json({ error: 'sync_failed', detail: e.message });
+  }
+});
+
 // ===== LAN Library Sync =====
 // Lets the mobile app pair with the desktop over the local network and pull
 // or push MP3s into ~/Music/PlayFool. Pairing uses a 6-char PIN saved in

@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { IoClose, IoSync, IoCheckmarkCircle, IoRefresh } from 'react-icons/io5';
+import { IoClose, IoCloudOutline, IoSync, IoRefresh } from 'react-icons/io5';
+
+// Cloud relay URL — same Worker the mobile app calls.
+const RELAY_URL = 'https://playfool-sync.playfool-sync.workers.dev';
 
 const primaryBtn = {
   background: '#1ed760', color: '#000', border: 'none',
@@ -15,167 +18,160 @@ const secondaryBtn = {
   display: 'inline-flex', alignItems: 'center', gap: 8,
 };
 
-function SyncDialog({ open, onClose }) {
-  const [info, setInfo] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const [debug, setDebug] = useState('');
+const CODE_KEY = 'playfool_sync_code';
 
-  const refresh = useCallback(async () => {
-    try {
-      const r = await fetch('/api/sync/settings');
-      const text = await r.text();
-      let j;
-      try { j = JSON.parse(text); } catch (parseErr) {
-        setDebug(`Settings parse error: ${parseErr.message}\nRaw: ${text.slice(0, 200)}`);
-        setInfo({ error: 'Bad response' });
-        return;
-      }
-      setInfo(j);
-    } catch (e) {
-      setDebug(`Settings fetch error: ${e.message}`);
-      setInfo({ error: e.message });
-    }
-  }, []);
+function genCode() {
+  const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  let out = '';
+  for (let i = 0; i < 6; i++) out += alphabet[Math.floor(Math.random() * alphabet.length)];
+  return out;
+}
+
+function SyncDialog({ open, onClose }) {
+  const [code, setCode] = useState('');
+  const [status, setStatus] = useState('');
+  const [counts, setCounts] = useState(null);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (!open) return;
-    setDebug('');
-    refresh();
-  }, [open, refresh]);
+    const saved = localStorage.getItem(CODE_KEY) || '';
+    setCode(saved);
+    setStatus('');
+    setCounts(null);
+    if (saved) refreshCounts(saved);
+  }, [open]);
 
-  const enable = async () => {
-    setBusy(true);
-    setDebug('');
+  const refreshCounts = async (c) => {
     try {
-      const r = await fetch('/api/sync/enable', { method: 'POST' });
-      const text = await r.text();
-      if (!r.ok) {
-        setDebug(`Enable failed (${r.status}): ${text.slice(0, 300)}`);
-      } else {
-        try {
-          const j = JSON.parse(text);
-          if (!j.ok) setDebug(`Enable returned: ${text.slice(0, 300)}`);
-        } catch (e) {
-          setDebug(`Enable parse error: ${text.slice(0, 300)}`);
-        }
-      }
-      await refresh();
+      const r = await fetch(`${RELAY_URL}/v1/list?code=${encodeURIComponent(c)}`);
+      const j = await r.json();
+      const localList = await fetch('/api/library').then((x) => x.json()).catch(() => ({ songs: [] }));
+      setCounts({ cloud: (j.files || []).length, local: (localList.songs || []).length });
     } catch (e) {
-      setDebug(`Enable threw: ${e.message}`);
+      setCounts(null);
     }
+  };
+
+  const onConnect = async () => {
+    if (!code || code.length < 4) {
+      setStatus('Enter at least 4 characters'); return;
+    }
+    setBusy(true); setStatus('');
+    try {
+      // Touch the relay to confirm internet works.
+      const r = await fetch(`${RELAY_URL}/v1/list?code=${encodeURIComponent(code)}`);
+      if (!r.ok) throw new Error(`Relay returned ${r.status}`);
+      localStorage.setItem(CODE_KEY, code);
+      await refreshCounts(code);
+      setStatus('Connected');
+    } catch (e) { setStatus('Cannot reach the cloud relay — check your internet'); }
     setBusy(false);
   };
 
-  const disable = async () => {
-    setBusy(true);
-    await fetch('/api/sync/disable', { method: 'POST' });
-    await refresh();
-    setBusy(false);
+  const onDisconnect = () => {
+    localStorage.removeItem(CODE_KEY);
+    setStatus('');
+    setCounts(null);
   };
 
-  const regenerate = async () => {
-    if (!window.confirm('Generate a new PIN? Your phone will need to re-pair.')) return;
-    setBusy(true);
-    await fetch('/api/sync/regenerate', { method: 'POST' });
-    await refresh();
+  const onGenerate = () => {
+    const c = genCode();
+    setCode(c);
+  };
+
+  const onSync = async () => {
+    setBusy(true); setStatus('Syncing...');
+    try {
+      const r = await fetch('/api/cloud-sync/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, relay: RELAY_URL }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'sync failed');
+      setStatus(`✓ ${j.uploaded} up · ${j.downloaded} down · ${j.errors} failed`);
+      await refreshCounts(code);
+    } catch (e) { setStatus(e.message); }
     setBusy(false);
   };
 
   if (!open) return null;
 
-  const enabled = info?.enabled;
-  const token = info?.token;
+  const connected = !!localStorage.getItem(CODE_KEY) && code === localStorage.getItem(CODE_KEY);
 
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460 }}>
-        <button
-          onClick={onClose}
-          style={{
-            position: 'absolute', top: 12, right: 12,
-            background: 'transparent', border: 'none',
-            color: 'var(--text-secondary)', cursor: 'pointer',
-            fontSize: 20, padding: 4,
-          }}
-          title="Close"
-        >
+        <button onClick={onClose} style={{
+          position: 'absolute', top: 12, right: 12,
+          background: 'transparent', border: 'none',
+          color: 'var(--text-secondary)', cursor: 'pointer',
+          fontSize: 20, padding: 4,
+        }} title="Close">
           <IoClose />
         </button>
 
         <h2 style={{ margin: 0, marginBottom: 8, fontSize: 20, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <IoSync /> Library Sync
+          <IoCloudOutline /> Cloud Sync
         </h2>
         <p style={{ color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.5, marginBottom: 16 }}>
-          Sync downloaded songs between this PC and your phone over your local Wi-Fi.
-          Both devices must be on the same network.
+          Share music between your PC and phone over the internet. Pick or generate a sync code,
+          then enter the same code on your phone (Settings → Sync). Files relay through Cloudflare
+          and get deleted right after they transfer.
         </p>
 
-        {!enabled && (
-          <div style={{ textAlign: 'center', padding: '16px 0' }}>
-            <button onClick={enable} disabled={busy} style={primaryBtn}>
-              <IoSync /> Allow sync on this network
+        <div style={{
+          background: 'var(--bg-card, #1a1a1a)', borderRadius: 8, padding: 16,
+          border: '1px solid var(--border)', marginBottom: 12,
+        }}>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>Sync code</div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              value={code}
+              onChange={(e) => setCode(e.target.value.toUpperCase())}
+              placeholder="ABC123"
+              maxLength={16}
+              style={{
+                flex: 1, fontSize: 22, letterSpacing: 4, fontWeight: 700,
+                background: 'var(--bg-surface)', color: '#1ed760',
+                border: '1px solid var(--border)', borderRadius: 6, padding: '8px 12px',
+              }}
+            />
+            <button onClick={onGenerate} style={secondaryBtn} title="Generate a new code">
+              <IoRefresh />
             </button>
           </div>
-        )}
 
-        {debug && (
-          <div style={{
-            marginTop: 12, padding: 10, borderRadius: 6,
-            background: 'rgba(232, 17, 35, 0.08)', border: '1px solid rgba(232, 17, 35, 0.4)',
-            fontSize: 11, fontFamily: 'monospace', color: '#ff8a8a',
-            whiteSpace: 'pre-wrap', wordBreak: 'break-all',
-          }}>
-            {debug}
+          {counts && (
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 10 }}>
+              Cloud: {counts.cloud} pending · Local library: {counts.local}
+            </div>
+          )}
+        </div>
+
+        {!!status && (
+          <div style={{ fontSize: 12, color: status.startsWith('✓') ? '#1ed760' : 'var(--text-secondary)', marginBottom: 12, textAlign: 'center' }}>
+            {status}
           </div>
         )}
 
-        {enabled && (
-          <>
-            <div style={{
-              background: 'var(--bg-card, #1a1a1a)', borderRadius: 8, padding: 16,
-              border: '1px solid var(--border)', marginBottom: 12,
-              textAlign: 'center',
-            }}>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
-                On your phone, open <strong>Settings → Sync</strong>.
-                This PC will appear automatically — tap it and enter the PIN below.
-              </div>
-
-              <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 4 }}>PIN</div>
-              <code style={{ fontSize: 32, color: '#1ed760', fontWeight: 700, letterSpacing: 4 }}>
-                {token || '------'}
-              </code>
-
-              <div style={{ fontSize: 11, color: '#1ed760', marginTop: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                <span style={{
-                  display: 'inline-block', width: 8, height: 8, borderRadius: 4,
-                  background: '#1ed760', boxShadow: '0 0 6px #1ed760',
-                }} />
-                Broadcasting on the network
-              </div>
-            </div>
-
-            {info?.peers && info.peers.length > 0 && (
-              <div style={{ marginBottom: 12 }}>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Recent devices:</div>
-                {info.peers.map((p, i) => (
-                  <div key={i} style={{ fontSize: 12, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <IoCheckmarkCircle style={{ color: '#1ed760' }} /> {p.name}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button onClick={regenerate} disabled={busy} style={secondaryBtn} title="Generate a new PIN">
-                <IoRefresh /> New PIN
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+          {!connected ? (
+            <button onClick={onConnect} disabled={busy} style={primaryBtn}>
+              <IoSync /> Connect
+            </button>
+          ) : (
+            <>
+              <button onClick={onDisconnect} disabled={busy} style={secondaryBtn}>
+                Disconnect
               </button>
-              <button onClick={disable} disabled={busy} style={secondaryBtn}>
-                Stop sync
+              <button onClick={onSync} disabled={busy} style={primaryBtn}>
+                <IoSync /> Sync now
               </button>
-            </div>
-          </>
-        )}
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
