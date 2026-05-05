@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { IoClose, IoSync, IoCheckmarkCircle, IoRefresh, IoCopyOutline } from 'react-icons/io5';
+import { IoClose, IoSync, IoCheckmarkCircle, IoRefresh } from 'react-icons/io5';
 
 const primaryBtn = {
   background: '#1ed760', color: '#000', border: 'none',
@@ -81,15 +81,9 @@ function SyncDialog({ open, onClose }) {
     setBusy(false);
   };
 
-  const copy = (text) => {
-    try { navigator.clipboard.writeText(text); } catch (e) {}
-  };
-
   if (!open) return null;
 
   const enabled = info?.enabled;
-  const address = info?.addresses?.[0];
-  const port = info?.port || 3000;
   const token = info?.token;
 
   return (
@@ -140,79 +134,26 @@ function SyncDialog({ open, onClose }) {
             <div style={{
               background: 'var(--bg-card, #1a1a1a)', borderRadius: 8, padding: 16,
               border: '1px solid var(--border)', marginBottom: 12,
+              textAlign: 'center',
             }}>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>
-                On your phone, open Settings → Sync, then enter:
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
+                On your phone, open <strong>Settings → Sync</strong>.
+                This PC will appear automatically — tap it and enter the PIN below.
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12 }}>
-                <span style={{ fontSize: 12, color: 'var(--text-secondary)', width: 60 }}>Address:</span>
-                <code style={{ fontSize: 14, color: 'var(--text-primary)', fontWeight: 600 }}>
-                  {address ? `${address}:${port}` : '(detecting…)'}
-                </code>
-                {address && (
-                  <button
-                    onClick={() => copy(`${address}:${port}`)}
-                    style={{ ...secondaryBtn, padding: '4px 8px', fontSize: 11 }}
-                    title="Copy"
-                  >
-                    <IoCopyOutline />
-                  </button>
-                )}
-              </div>
+              <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 4 }}>PIN</div>
+              <code style={{ fontSize: 32, color: '#1ed760', fontWeight: 700, letterSpacing: 4 }}>
+                {token || '------'}
+              </code>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-                <span style={{ fontSize: 12, color: 'var(--text-secondary)', width: 60 }}>PIN:</span>
-                <code style={{ fontSize: 18, color: '#1ed760', fontWeight: 700, letterSpacing: 2 }}>
-                  {token || '------'}
-                </code>
-                {token && (
-                  <button
-                    onClick={() => copy(token)}
-                    style={{ ...secondaryBtn, padding: '4px 8px', fontSize: 11 }}
-                    title="Copy"
-                  >
-                    <IoCopyOutline />
-                  </button>
-                )}
-              </div>
-
-              {info?.addresses && info.addresses.length > 1 && (
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 12 }}>
-                  Other addresses: {info.addresses.slice(1).join(', ')}
-                </div>
-              )}
-
-              <div style={{ fontSize: 11, color: '#1ed760', marginTop: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div style={{ fontSize: 11, color: '#1ed760', marginTop: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                 <span style={{
                   display: 'inline-block', width: 8, height: 8, borderRadius: 4,
                   background: '#1ed760', boxShadow: '0 0 6px #1ed760',
                 }} />
-                Broadcasting on the network — your phone should find this PC automatically.
+                Broadcasting on the network
               </div>
             </div>
-
-            {address && token && (
-              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
-                <div style={{
-                  background: '#fff', padding: 10, borderRadius: 8,
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
-                }}>
-                  <img
-                    alt="Pair QR code"
-                    width={180}
-                    height={180}
-                    src={
-                      'https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=' +
-                      encodeURIComponent(`playfool://pair?a=${address}:${port}&p=${token}`)
-                    }
-                  />
-                  <span style={{ fontSize: 10, color: '#444', fontWeight: 600 }}>
-                    Scan this from your phone
-                  </span>
-                </div>
-              </div>
-            )}
 
             {info?.peers && info.peers.length > 0 && (
               <div style={{ marginBottom: 12 }}>
