@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import styles from './Tour.module.css';
 
-const APP_VERSION = '1.9.30';
+const APP_VERSION = '1.9.31';
 
 const welcomeSteps = [
   {

@@ -1661,25 +1661,41 @@ async function relayUpload(relay, code, name, srcPath, onBytes) {
 // Live progress for the cloud sync — SyncDialog polls /api/cloud-sync/progress
 // to show a per-file bar while /api/cloud-sync/run is still running.
 let cloudSyncProgress = { active: false };
+let cloudSyncCancel = false;
 function setProgress(p) { cloudSyncProgress = p; }
 
 app.get('/api/cloud-sync/progress', (req, res) => {
   res.json(cloudSyncProgress);
 });
 
+app.post('/api/cloud-sync/cancel', (req, res) => {
+  cloudSyncCancel = true;
+  res.json({ ok: true });
+});
+
+// Match songs by their base name (extension stripped, lowercase, normalized)
+// so a "song.mp3" on PC and "song.m4a" on phone count as the same song.
+function songKey(name) {
+  if (!name) return '';
+  return String(name)
+    .replace(/\.[^.]+$/, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
 app.post('/api/cloud-sync/run', async (req, res) => {
   const code = String(req.body?.code || '').toUpperCase();
   const relay = String(req.body?.relay || '');
   if (!code || !relay) return res.status(400).json({ error: 'missing_code_or_relay' });
 
-  let uploaded = 0, downloaded = 0, errors = 0;
+  cloudSyncCancel = false;
+  let uploaded = 0, downloaded = 0, errors = 0, cancelled = false;
   let lastError = '';
   try {
     setProgress({ active: true, stage: 'list', i: 0, total: 0 });
     const remoteData = await relayList(relay, code);
     const remote = remoteData.files || [];
-    const remoteKey = (f) => `${f.name}|${f.size}`;
-    const remoteSet = new Set(remote.map(remoteKey));
 
     const localFiles = fs.existsSync(downloadsDir)
       ? fs.readdirSync(downloadsDir).filter((f) => /\.(mp3|m4a|opus|webm|ogg|wav)$/i.test(f))
@@ -1688,29 +1704,44 @@ app.post('/api/cloud-sync/run', async (req, res) => {
       const full = path.join(downloadsDir, name);
       return { name, size: fs.statSync(full).size, full };
     });
-    const localSet = new Set(localMeta.map(remoteKey));
+    const localKeySet = new Set(localMeta.map((f) => songKey(f.name)));
+    const remoteKeySet = new Set(remote.map((f) => songKey(f.name)));
 
-    const toDownload = remote.filter((f) => !localSet.has(remoteKey(f)));
-    const toUpload = localMeta.filter((f) => !remoteSet.has(remoteKey(f)));
+    const toDownload = remote.filter((f) => !localKeySet.has(songKey(f.name)));
+    const toUpload = localMeta.filter((f) => !remoteKeySet.has(songKey(f.name)));
     const totalCount = toDownload.length + toUpload.length;
     let i = 0;
 
     for (const f of toDownload) {
+      if (cloudSyncCancel) { cancelled = true; break; }
       i++;
       const safeName = path.basename(f.name).replace(/[^\w.\- ()]/g, '_');
-      const dest = path.join(downloadsDir, safeName);
-      if (fs.existsSync(dest)) { downloaded++; continue; }
+      const finalDest = path.join(downloadsDir, safeName);
+      const tempDest = finalDest + '.part';
+      // If the song name (base) already exists locally with any extension, skip.
+      const baseKey = songKey(safeName);
+      if ([...localKeySet].includes(baseKey)) { downloaded++; continue; }
       setProgress({ active: true, stage: 'download', file: f.name, i, total: totalCount, bytes: 0, totalBytes: f.size || 0 });
       try {
-        await relayDownload(relay, code, f.id, dest, (sent, total) => {
+        await relayDownload(relay, code, f.id, tempDest, (sent, total) => {
           setProgress({ active: true, stage: 'download', file: f.name, i, total: totalCount, bytes: sent, totalBytes: total });
         });
+        // Atomic rename — only published into the library once download completes.
+        try { fs.renameSync(tempDest, finalDest); } catch (e) {
+          try { fs.unlinkSync(tempDest); } catch (_) {}
+          throw e;
+        }
         await relayDelete(relay, code, f.id);
+        localKeySet.add(baseKey);
         downloaded++;
-      } catch (e) { errors++; lastError = e.message; }
+      } catch (e) {
+        try { if (fs.existsSync(tempDest)) fs.unlinkSync(tempDest); } catch (_) {}
+        errors++; lastError = e.message;
+      }
     }
 
     for (const f of toUpload) {
+      if (cloudSyncCancel) { cancelled = true; break; }
       i++;
       setProgress({ active: true, stage: 'upload', file: f.name, i, total: totalCount, bytes: 0, totalBytes: f.size });
       try {
@@ -1722,9 +1753,11 @@ app.post('/api/cloud-sync/run', async (req, res) => {
     }
 
     setProgress({ active: false });
-    res.json({ ok: true, uploaded, downloaded, errors, lastError });
+    cloudSyncCancel = false;
+    res.json({ ok: true, uploaded, downloaded, errors, lastError, cancelled });
   } catch (e) {
     setProgress({ active: false });
+    cloudSyncCancel = false;
     res.status(500).json({ error: 'sync_failed', detail: e.message });
   }
 });
