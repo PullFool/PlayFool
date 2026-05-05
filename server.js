@@ -1580,6 +1580,35 @@ process.on('SIGTERM', () => {
 // or push MP3s into ~/Music/PlayFool. Pairing uses a 6-char PIN saved in
 // appData; mobile sends it as ?token= or X-PlayFool-Token header.
 
+// Optional dep — if bonjour fails to load (e.g. corrupted node_modules) we
+// gracefully fall back to no-discovery so the rest of sync still works.
+let Bonjour = null;
+try { Bonjour = require('bonjour-service').Bonjour; } catch (e) { /* mdns disabled */ }
+
+let bonjourInstance = null;
+let bonjourService = null;
+
+function startMdnsBroadcast() {
+  if (!Bonjour) return;
+  if (bonjourService) return; // already broadcasting
+  try {
+    bonjourInstance = bonjourInstance || new Bonjour();
+    const port = (typeof global !== 'undefined' && global.PLAYFOOL_PORT) || 3000;
+    bonjourService = bonjourInstance.publish({
+      name: `PlayFool on ${os.hostname()}`,
+      type: 'playfool',
+      protocol: 'tcp',
+      port,
+      txt: { v: '1', host: os.hostname() },
+    });
+  } catch (e) { /* non-fatal */ }
+}
+
+function stopMdnsBroadcast() {
+  try { if (bonjourService) bonjourService.stop(); } catch (e) {}
+  bonjourService = null;
+}
+
 const syncStateFile = path.join(appDataDir, 'sync.json');
 let syncState = { enabled: false, token: null, peers: [] };
 try {
@@ -1587,6 +1616,10 @@ try {
     syncState = { ...syncState, ...JSON.parse(fs.readFileSync(syncStateFile, 'utf8')) };
   }
 } catch (e) { /* ignore — fall back to default */ }
+
+// If sync was already enabled from a previous session, resume broadcasting
+// once the HTTP port is known.
+setTimeout(() => { if (syncState.enabled) startMdnsBroadcast(); }, 1500);
 
 function persistSyncState() {
   try { fs.writeFileSync(syncStateFile, JSON.stringify(syncState, null, 2), 'utf8'); } catch (e) {}
@@ -1645,6 +1678,7 @@ app.post('/api/sync/enable', (req, res) => {
     if (!syncState.token) syncState.token = genPin();
     syncState.enabled = true;
     persistSyncState();
+    startMdnsBroadcast();
     res.json({ ok: true, token: syncState.token });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message, where: 'enable' });
@@ -1655,6 +1689,7 @@ app.post('/api/sync/disable', (req, res) => {
   try {
     syncState.enabled = false;
     persistSyncState();
+    stopMdnsBroadcast();
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message, where: 'disable' });

@@ -182,6 +182,14 @@ function SyncDialog({ open, onClose }) {
                   Other addresses: {info.addresses.slice(1).join(', ')}
                 </div>
               )}
+
+              <div style={{ fontSize: 11, color: '#1ed760', marginTop: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{
+                  display: 'inline-block', width: 8, height: 8, borderRadius: 4,
+                  background: '#1ed760', boxShadow: '0 0 6px #1ed760',
+                }} />
+                Broadcasting on the network — your phone should find this PC automatically.
+              </div>
             </div>
 
             {address && token && (
