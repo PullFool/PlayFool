@@ -1673,15 +1673,30 @@ app.post('/api/cloud-sync/cancel', (req, res) => {
   res.json({ ok: true });
 });
 
-// Match songs by their base name (extension stripped, lowercase, normalized)
-// so a "song.mp3" on PC and "song.m4a" on phone count as the same song.
+// Match songs by their base name with aggressive normalization. yt-dlp on
+// PC and the mobile downloader sanitize filenames slightly differently
+// (apostrophes, em-dashes, brackets), so a strict ext-only strip used to
+// leak the same song through as two different keys.
 function songKey(name) {
   if (!name) return '';
   return String(name)
-    .replace(/\.[^.]+$/, '')
-    .replace(/\s+/g, ' ')
+    .replace(/\.[^.]+$/, '')          // strip extension
+    .replace(/[^\p{L}\p{N}\s]/gu, '')  // strip punctuation
+    .replace(/\s+/g, ' ')              // collapse whitespace
     .trim()
     .toLowerCase();
+}
+
+function dedupByKey(list, keyFn) {
+  const seen = new Set();
+  const out = [];
+  for (const item of list) {
+    const k = keyFn(item);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(item);
+  }
+  return out;
 }
 
 app.post('/api/cloud-sync/run', async (req, res) => {
@@ -1694,16 +1709,22 @@ app.post('/api/cloud-sync/run', async (req, res) => {
   let lastError = '';
   try {
     setProgress({ active: true, stage: 'list', i: 0, total: 0 });
-    const remoteData = await relayList(relay, code);
-    const remote = remoteData.files || [];
+    const remoteRaw = (await relayList(relay, code)).files || [];
 
-    const localFiles = fs.existsSync(downloadsDir)
+    const localFilesRaw = fs.existsSync(downloadsDir)
       ? fs.readdirSync(downloadsDir).filter((f) => /\.(mp3|m4a|opus|webm|ogg|wav)$/i.test(f))
       : [];
-    const localMeta = localFiles.map((name) => {
+    const localRaw = localFilesRaw.map((name) => {
       const full = path.join(downloadsDir, name);
       return { name, size: fs.statSync(full).size, full };
     });
+
+    // Dedupe both sides — the same song may appear twice locally (mp3 +
+    // m4a copies) or twice in the cloud (legacy + SAF uploads). Treat
+    // each songKey as a single song.
+    const remote = dedupByKey(remoteRaw, (f) => songKey(f.name));
+    const localMeta = dedupByKey(localRaw, (f) => songKey(f.name));
+
     const localKeySet = new Set(localMeta.map((f) => songKey(f.name)));
     const remoteKeySet = new Set(remote.map((f) => songKey(f.name)));
 
