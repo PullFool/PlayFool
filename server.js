@@ -1731,7 +1731,9 @@ app.post('/api/cloud-sync/run', async (req, res) => {
           try { fs.unlinkSync(tempDest); } catch (_) {}
           throw e;
         }
-        await relayDelete(relay, code, f.id);
+        // Don't confirm-delete the cloud copy — leaving it on R2 for the
+        // 24h cron window prevents re-upload on the next sync and lets
+        // additional peers on the same code each pull the file.
         localKeySet.add(baseKey);
         downloaded++;
       } catch (e) {
