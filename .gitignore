@@ -10,3 +10,6 @@ test-electron.js
 test-dist/
 error-config.json
 ffmpeg_nwjs_codecs.dll
+.env
+.env.local
+.env.*.local
