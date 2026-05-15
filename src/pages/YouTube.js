@@ -37,6 +37,15 @@ function YouTube() {
   const [currentPage, setCurrentPage] = useState(savedPage);
   // True while the background fetch of the full 120-result pool is in flight.
   const [poolLoading, setPoolLoading] = useState(false);
+  // Persistent "already downloaded" set so a video stays marked Done across
+  // searches and across app restarts. Stored as `videoId:type` keys so the
+  // MP3 and MP4 tags are tracked independently.
+  const [downloadedKeys, setDownloadedKeys] = useState(() => {
+    try {
+      const saved = localStorage.getItem('playfool_downloaded_keys');
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+    } catch (e) { return new Set(); }
+  });
   const [searchHistory, setSearchHistory] = useState(() => {
     const saved = localStorage.getItem('playfool_search_history');
     return saved ? JSON.parse(saved) : [];
@@ -123,11 +132,22 @@ function YouTube() {
     setCurrentPage(clamped);
   };
 
+  const markDownloaded = (key) => {
+    setDownloadedKeys(prev => {
+      if (prev.has(key)) return prev;
+      const next = new Set(prev);
+      next.add(key);
+      try { localStorage.setItem('playfool_downloaded_keys', JSON.stringify([...next])); } catch (e) {}
+      return next;
+    });
+  };
+
   // Fire a download in parallel. Per-button state shows spinner → checkmark.
   const startDownload = async (video, type, quality = null) => {
     const key = `${video.id}:${type}`;
-    // Prevent duplicate downloads — skip if already downloading or already done
-    if (downloadState[key] === 'downloading' || downloadState[key] === 'done') return;
+    // Prevent duplicate downloads — skip if already downloading, just-finished
+    // this session, or persistently marked done from a previous session.
+    if (downloadState[key] === 'downloading' || downloadState[key] === 'done' || downloadedKeys.has(key)) return;
     setDownloadState(prev => ({ ...prev, [key]: 'downloading' }));
 
     try {
@@ -164,8 +184,10 @@ function YouTube() {
         window.dispatchEvent(new CustomEvent('playfool:library-changed', { detail: { kind: 'video' } }));
       }
 
-      // Keep 'Done' tag visible until the next search
+      // Mark Done — both ephemeral (session state) and persistent (so next
+      // searches and next app launches still show Done).
       setDownloadState(prev => ({ ...prev, [key]: 'done' }));
+      markDownloaded(key);
     } catch (e) {
       setError('Download failed: ' + e.message);
       setDownloadState(prev => {
@@ -180,7 +202,7 @@ function YouTube() {
 
   const openVideoDownload = async (video) => {
     const key = `${video.id}:mp4`;
-    if (downloadState[key] === 'downloading' || downloadState[key] === 'done') return;
+    if (downloadState[key] === 'downloading' || downloadState[key] === 'done' || downloadedKeys.has(key)) return;
     setVideoModal(video);
     setLoadingQualities(true);
     setQualities([]);
@@ -328,7 +350,10 @@ function YouTube() {
 
                   <div className={styles.downloadBtns}>
                     {(() => {
-                      const mp3State = downloadState[`${video.id}:mp3`];
+                      const mp3Key = `${video.id}:mp3`;
+                      // Effective state: live session value, OR 'done' if the
+                      // video was downloaded in any past session.
+                      const mp3State = downloadState[mp3Key] || (downloadedKeys.has(mp3Key) ? 'done' : undefined);
                       const locked = mp3State === 'downloading' || mp3State === 'done';
                       return (
                         <button
@@ -349,7 +374,8 @@ function YouTube() {
                       );
                     })()}
                     {(() => {
-                      const mp4State = downloadState[`${video.id}:mp4`];
+                      const mp4Key = `${video.id}:mp4`;
+                      const mp4State = downloadState[mp4Key] || (downloadedKeys.has(mp4Key) ? 'done' : undefined);
                       const locked = mp4State === 'downloading' || mp4State === 'done';
                       return (
                         <button
