@@ -135,6 +135,51 @@
   color: var(--green); font-size: 16px; font-weight: 600;
 }
 
+/* Pagination */
+.pagination {
+  display: flex; align-items: center; justify-content: center;
+  gap: 6px; margin: 8px 0 32px;
+}
+
+.pageBtn, .pageNav {
+  min-width: 34px; height: 34px;
+  padding: 0 8px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--bg-surface); color: var(--text-secondary);
+  border: 1px solid var(--border); border-radius: 6px;
+  font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: all 0.15s;
+}
+.pageBtn:hover:not(.pageActive),
+.pageNav:hover:not(:disabled) {
+  border-color: var(--green); color: var(--text-primary);
+}
+
+.pageActive {
+  background: var(--green); border-color: var(--green);
+  color: #000; cursor: default;
+}
+
+.pageNav:disabled {
+  opacity: 0.4; cursor: not-allowed;
+}
+
+.pageLoading {
+  display: flex; align-items: center; gap: 8px;
+  color: var(--text-secondary); font-size: 14px;
+  padding: 40px 0; justify-content: center;
+}
+.pageLoading .spinner {
+  border-color: rgba(255,255,255,0.25);
+  border-top-color: var(--green);
+  width: 16px; height: 16px;
+}
+.pageBtn .spinner {
+  border-color: rgba(255,255,255,0.25);
+  border-top-color: var(--green);
+  margin-right: 0;
+}
+
 /* Search history dropdown */
 .historyDropdown {
   position: absolute; top: 100%; left: 0; right: 120px;

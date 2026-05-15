@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { usePlayer } from '../context/PlayerContext';
-import { IoSearch, IoDownload, IoMusicalNotes, IoPlay, IoPause, IoShuffle, IoVideocam, IoClose, IoTime, IoTrash, IoCheckmarkCircle } from 'react-icons/io5';
+import { IoSearch, IoDownload, IoMusicalNotes, IoPlay, IoPause, IoShuffle, IoVideocam, IoClose, IoTime, IoTrash, IoCheckmarkCircle, IoChevronBack, IoChevronForward } from 'react-icons/io5';
 import styles from './YouTube.module.css';
 
 const API_BASE = process.env.REACT_APP_API_URL;
@@ -10,6 +10,13 @@ const SERVER_BASE = process.env.REACT_APP_SERVER_URL;
 let savedQuery = '';
 let savedResults = [];
 let savedDownloaded = [];
+let savedPage = 1;
+
+// Two-phase search: fetch 30 fast so results show immediately, then pull the
+// full 120-result pool in the background. Shown 30 per page = up to 4 pages.
+const PAGE_SIZE = 30;
+const FULL_POOL = 120;
+const MAX_PAGES = FULL_POOL / PAGE_SIZE;
 
 function YouTube() {
   const { playSong, shufflePlay, currentSong, isPlaying } = usePlayer();
@@ -27,20 +34,31 @@ function YouTube() {
   const [selectedQuality, setSelectedQuality] = useState('720');
   const [loadingQualities, setLoadingQualities] = useState(false);
   const [previewQuality, setPreviewQuality] = useState('720');
-  const [resultsLimit, setResultsLimit] = useState(() => {
-    const saved = localStorage.getItem('playfool_search_limit');
-    return saved ? parseInt(saved, 10) : 30;
-  });
+  const [currentPage, setCurrentPage] = useState(savedPage);
+  // True while the background fetch of the full 120-result pool is in flight.
+  const [poolLoading, setPoolLoading] = useState(false);
   const [searchHistory, setSearchHistory] = useState(() => {
     const saved = localStorage.getItem('playfool_search_history');
     return saved ? JSON.parse(saved) : [];
   });
   const [showHistory, setShowHistory] = useState(false);
+  // Bumped on every search so a slow background pool-fetch from an old search
+  // can't overwrite the results of a newer one.
+  const searchTokenRef = useRef(0);
 
   // Save state when it changes so it persists across navigation
   useEffect(() => { savedQuery = query; }, [query]);
   useEffect(() => { savedResults = results; }, [results]);
   useEffect(() => { savedDownloaded = downloadedSongs; }, [downloadedSongs]);
+  useEffect(() => { savedPage = currentPage; }, [currentPage]);
+
+  // Derived pagination values. While the background pool is still loading we
+  // optimistically show all MAX_PAGES buttons so the user knows more is
+  // coming; once loaded we show the real page count (may be < MAX_PAGES if
+  // YouTube returned fewer than 120 results).
+  const loadedPages = Math.max(1, Math.ceil(results.length / PAGE_SIZE));
+  const totalPages = poolLoading ? MAX_PAGES : loadedPages;
+  const pagedResults = results.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   const addToHistory = (q) => {
     const updated = [q, ...searchHistory.filter(h => h !== q)].slice(0, 10);
@@ -57,23 +75,52 @@ function YouTube() {
   const search = async (searchQuery) => {
     const q = (searchQuery || query).trim();
     if (!q) return;
+    const token = ++searchTokenRef.current;
     setQuery(q);
     setShowHistory(false);
     setSearching(true);
     setError('');
     // Clear download tags from previous results — fresh search, fresh buttons
     setDownloadState({});
+    // Every new search starts back on page 1.
+    setCurrentPage(1);
     addToHistory(q);
+
+    // Phase 1 — fetch 30 fast so the user sees results immediately.
     try {
-      const res = await fetch(`${API_BASE}/search?q=${encodeURIComponent(q)}&limit=${resultsLimit}`);
+      const res = await fetch(`${API_BASE}/search?q=${encodeURIComponent(q)}&limit=${PAGE_SIZE}`);
       const data = await res.json();
-      if (data.error) { setError(data.error); setResults([]); }
-      else setResults(data.results || []);
+      if (searchTokenRef.current !== token) return; // superseded by a newer search
+      if (data.error) { setError(data.error); setResults([]); setSearching(false); return; }
+      setResults(data.results || []);
     } catch (e) {
+      if (searchTokenRef.current !== token) return;
       setError('Search failed. Make sure the app backend is running.');
-    } finally {
       setSearching(false);
+      return;
     }
+    setSearching(false);
+
+    // Phase 2 — pull the full 120-result pool in the background. If it fails
+    // we silently keep the 30 we already showed.
+    setPoolLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/search?q=${encodeURIComponent(q)}&limit=${FULL_POOL}`);
+      const data = await res.json();
+      if (searchTokenRef.current !== token) return; // superseded — don't clobber newer results
+      if (!data.error && Array.isArray(data.results) && data.results.length > 0) {
+        setResults(data.results);
+      }
+    } catch (e) {
+      /* keep the phase-1 results */
+    } finally {
+      if (searchTokenRef.current === token) setPoolLoading(false);
+    }
+  };
+
+  const goToPage = (page) => {
+    const clamped = Math.min(Math.max(1, page), totalPages);
+    setCurrentPage(clamped);
   };
 
   // Fire a download in parallel. Per-button state shows spinner → checkmark.
@@ -239,22 +286,6 @@ function YouTube() {
           <option value="720">720p</option>
           <option value="1080">1080p</option>
         </select>
-        <select
-          value={resultsLimit}
-          onChange={(e) => {
-            const v = parseInt(e.target.value, 10);
-            setResultsLimit(v);
-            localStorage.setItem('playfool_search_limit', String(v));
-          }}
-          className={styles.qualitySelect}
-          title="Number of results"
-        >
-          <option value="10">10 results</option>
-          <option value="15">15 results</option>
-          <option value="25">25 results</option>
-          <option value="30">30 results</option>
-          <option value="50">50 results</option>
-        </select>
         <button onClick={() => search()} disabled={searching} className="btn btn-primary">
           <IoSearch /> {searching ? 'Searching...' : 'Search'}
         </button>
@@ -265,8 +296,14 @@ function YouTube() {
       {results.length > 0 && (
         <>
           <h2 className="section-title">Search Results</h2>
+          {pagedResults.length === 0 && poolLoading ? (
+            // User jumped to a page whose data is still in the background fetch.
+            <div className={styles.pageLoading}>
+              <span className={styles.spinner} /> Loading page {currentPage}...
+            </div>
+          ) : (
           <ul className="song-list mb-32">
-            {results.map((video, i) => {
+            {pagedResults.map((video, i) => {
               const isThisPlaying = currentSong?.id === `preview-${video.id}` && isPlaying;
               return (
                 <li key={video.id || i} className="song-item">
@@ -337,6 +374,42 @@ function YouTube() {
               );
             })}
           </ul>
+          )}
+
+          {totalPages > 1 && (
+            <div className={styles.pagination}>
+              <button
+                className={styles.pageNav}
+                onClick={() => goToPage(currentPage - 1)}
+                disabled={currentPage <= 1}
+                title="Previous page"
+              >
+                <IoChevronBack />
+              </button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+                const needsPool = page > loadedPages;
+                return (
+                  <button
+                    key={page}
+                    className={`${styles.pageBtn} ${page === currentPage ? styles.pageActive : ''}`}
+                    onClick={() => goToPage(page)}
+                  >
+                    {needsPool && poolLoading && page === currentPage
+                      ? <span className={styles.spinner} />
+                      : page}
+                  </button>
+                );
+              })}
+              <button
+                className={styles.pageNav}
+                onClick={() => goToPage(currentPage + 1)}
+                disabled={currentPage >= totalPages}
+                title="Next page"
+              >
+                <IoChevronForward />
+              </button>
+            </div>
+          )}
         </>
       )}
 
