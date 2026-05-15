@@ -251,8 +251,10 @@ app.get('/api/search', async (req, res) => {
   if (!ytdlp) return res.json({ error: 'yt-dlp not found. Run: pip install yt-dlp' });
 
   const safeQ = q.replace(/[^a-zA-Z0-9 \-_]/g, '');
-  // Allow frontend to request more results via ?limit=50 (default 30, cap at 50)
-  const limit = Math.max(1, Math.min(50, parseInt(req.query.limit, 10) || 30));
+  // Fetch a 120-result pool in one shot; the frontend paginates it 30 per
+  // page. yt-dlp's ytsearch has no real offset/pagination, so over-fetching
+  // once and slicing client-side is the only way to get page navigation.
+  const limit = Math.max(1, Math.min(120, parseInt(req.query.limit, 10) || 120));
   const args = [...ytdlp.args, `ytsearch${limit}:${safeQ}`, '--dump-json', '--flat-playlist', '--no-download'];
 
   const { stdout } = await runCommand(ytdlp.cmd, args);
