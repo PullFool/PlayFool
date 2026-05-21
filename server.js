@@ -1774,6 +1774,16 @@ app.post('/api/cloud-sync/run', async (req, res) => {
           setProgress({ active: true, stage: 'upload', file: f.name, i, total: totalCount, bytes: sent, totalBytes: total });
         });
         uploaded++;
+        // Also push the song's cover art (the sidecar .jpg in thumbnailsDir)
+        // so the mobile app shows a thumbnail for synced songs. Best-effort:
+        // a missing or failed cover never fails the song's sync.
+        try {
+          const base = path.basename(f.name, path.extname(f.name));
+          const thumbPath = path.join(thumbnailsDir, base + '.jpg');
+          if (fs.existsSync(thumbPath)) {
+            await relayUpload(relay, code, base + '.jpg', thumbPath);
+          }
+        } catch (e) { /* cover art is optional */ }
       } catch (e) { errors++; lastError = e.message; }
     }
 
