@@ -863,6 +863,99 @@ function resultsToLrc(results, preferPlain, rejectedIds = []) {
   return null;
 }
 
+// Genius scraper — last-ditch fallback for OPM/niche tracks neither lrclib
+// nor NetEase has indexed. Genius blocks bare requests, so we send a
+// browser-shaped User-Agent; the existing httpGet sends 'PlayFool/1.0' which
+// gets 403'd.
+function geniusHttpGet(url, timeout = 10000) {
+  return new Promise((resolve, reject) => {
+    const client = url.startsWith('https') ? https : http;
+    const req = client.get(
+      url,
+      {
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          Accept: 'application/json, text/html, */*',
+          'Accept-Language': 'en-US,en;q=0.9',
+        },
+        timeout,
+      },
+      (res) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          return geniusHttpGet(res.headers.location, timeout).then(resolve).catch(reject);
+        }
+        let data = '';
+        res.on('data', (chunk) => (data += chunk));
+        res.on('end', () => resolve({ status: res.statusCode, data }));
+      },
+    );
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error('Request timeout')); });
+  });
+}
+
+async function searchGenius(query) {
+  try {
+    const { status, data } = await geniusHttpGet(
+      `https://genius.com/api/search/multi?q=${encodeURIComponent(query)}&per_page=5`,
+    );
+    if (status !== 200) return [];
+    const json = JSON.parse(data);
+    const sections = (json && json.response && json.response.sections) || [];
+    const songSection = sections.find((s) => s.type === 'song');
+    return ((songSection && songSection.hits) || []).map((h) => ({
+      id: h.result.id,
+      name: h.result.title,
+      artist: (h.result.primary_artist && h.result.primary_artist.name) || '',
+      url: h.result.url,
+    }));
+  } catch (e) {
+    return [];
+  }
+}
+
+async function fetchGeniusLyricsByUrl(url) {
+  try {
+    const { status, data } = await geniusHttpGet(url);
+    if (status !== 200) return null;
+    const re = /<div[^>]*data-lyrics-container="true"[^>]*>([\s\S]*?)<\/div>/g;
+    const chunks = [];
+    let m;
+    while ((m = re.exec(data)) !== null) chunks.push(m[1]);
+    if (chunks.length === 0) return null;
+    const text = chunks.join('<br>')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&#x27;|&apos;/g, "'")
+      .replace(/&quot;/g, '"')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+    return text || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+async function searchGeniusResults(title) {
+  const hits = await searchGenius(title);
+  if (!hits.length) return [];
+  const top = hits[0];
+  const lyrics = await fetchGeniusLyricsByUrl(top.url);
+  if (!lyrics) return [];
+  return [{
+    id: `genius-${top.id}`,
+    name: top.name,
+    artistName: top.artist,
+    syncedLyrics: null,
+    plainLyrics: lyrics,
+    duration: null,
+  }];
+}
+
 async function fetchLyricsFromLrclib(title, rejectedIds = []) {
   const variants = getSearchVariants(title);
   const isLiveOrCover = /live|session|cover|acoustic|remix|performance/i.test(title);
@@ -884,6 +977,12 @@ async function fetchLyricsFromLrclib(title, rejectedIds = []) {
     const neteaseResults = await searchNetease(cleaned);
     if (neteaseResults.length > 0) {
       const lrc = resultsToLrc(neteaseResults, isLiveOrCover, rejectedIds);
+      if (lrc) return lrc;
+    }
+    console.log(`Searching Genius: "${cleaned}"`);
+    const geniusResults = await searchGeniusResults(cleaned);
+    if (geniusResults.length > 0) {
+      const lrc = resultsToLrc(geniusResults, isLiveOrCover, rejectedIds);
       if (lrc) return lrc;
     }
   }
