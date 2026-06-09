@@ -760,6 +760,79 @@ async function searchLrclib(query) {
   }
 }
 
+// NetEase Music fallback — far stronger OPM / Asian coverage than lrclib.
+// Unofficial API, but stable for years. The endpoint refuses requests without
+// a NetEase-looking Referer header, so we don't reuse httpGet here.
+function neteaseHttpGet(url, timeout = 10000) {
+  return new Promise((resolve, reject) => {
+    const client = url.startsWith('https') ? https : http;
+    const req = client.get(
+      url,
+      {
+        headers: {
+          'User-Agent': 'Mozilla/5.0',
+          Referer: 'https://music.163.com',
+        },
+        timeout,
+      },
+      (res) => {
+        let data = '';
+        res.on('data', (chunk) => (data += chunk));
+        res.on('end', () => resolve({ status: res.statusCode, data }));
+      },
+    );
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error('Request timeout')); });
+  });
+}
+
+async function fetchNeteaseLyricsById(songId) {
+  try {
+    const { status, data } = await neteaseHttpGet(
+      `https://music.163.com/api/song/lyric?id=${songId}&lv=1&kv=1&tv=-1`,
+    );
+    if (status !== 200) return null;
+    const json = JSON.parse(data);
+    const synced = json && json.lrc && json.lrc.lyric;
+    if (!synced) return null;
+    const plain = synced.replace(/\[\d+:\d+\.\d+\]/g, '').replace(/\n{2,}/g, '\n').trim() || null;
+    return { synced, plain };
+  } catch (e) {
+    return null;
+  }
+}
+
+async function searchNetease(query) {
+  try {
+    const { status, data } = await neteaseHttpGet(
+      `https://music.163.com/api/search/get?s=${encodeURIComponent(query)}&type=1&limit=5`,
+    );
+    if (status !== 200) return [];
+    const json = JSON.parse(data);
+    const songs = (json && json.result && json.result.songs) || [];
+    if (songs.length === 0) return [];
+
+    // Try top 3 — first NetEase match isn't always the one with usable
+    // lyrics (instrumentals, alt versions). Stop at the first synced result.
+    for (const song of songs.slice(0, 3)) {
+      const lyrics = await fetchNeteaseLyricsById(song.id);
+      if (lyrics) {
+        return [{
+          id: `netease-${song.id}`,
+          name: song.name,
+          artistName: (song.artists || []).map((a) => a.name).filter(Boolean).join(', '),
+          syncedLyrics: lyrics.synced,
+          plainLyrics: lyrics.plain,
+          duration: song.duration ? Math.round(song.duration / 1000) : null,
+        }];
+      }
+    }
+    return [];
+  } catch (e) {
+    return [];
+  }
+}
+
 function resultsToLrc(results, preferPlain, rejectedIds = []) {
   // Filter out matches the user has previously marked as wrong.
   const rejectedSet = new Set((rejectedIds || []).map(String));
@@ -799,6 +872,18 @@ async function fetchLyricsFromLrclib(title, rejectedIds = []) {
     const results = await searchLrclib(query);
     if (results) {
       const lrc = resultsToLrc(results, isLiveOrCover, rejectedIds);
+      if (lrc) return lrc;
+    }
+  }
+
+  // NetEase fallback — only reached when lrclib found nothing across all
+  // variants. Covers OPM / Asian tracks that lrclib hasn't indexed.
+  const cleaned = cleanTitle(title);
+  if (cleaned) {
+    console.log(`Searching NetEase: "${cleaned}"`);
+    const neteaseResults = await searchNetease(cleaned);
+    if (neteaseResults.length > 0) {
+      const lrc = resultsToLrc(neteaseResults, isLiveOrCover, rejectedIds);
       if (lrc) return lrc;
     }
   }
