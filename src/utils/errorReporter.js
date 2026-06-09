@@ -1,5 +1,8 @@
 // Silent frontend error reporter — posts errors to backend which forwards to Discord
 const API_BASE = process.env.REACT_APP_API_URL || '/api';
+// Build revision pinned to the release tag — lets us match a crash report
+// back to a specific build even when two tagged releases share a version.
+const BUILD_REVISION = 'a7f3c9b4e2d10567';
 const recentErrors = new Map();
 const DEDUP_WINDOW_MS = 30000;
 
@@ -37,6 +40,7 @@ function send(source, message, stack, extra = {}) {
         stack: sanitize(stack || '').slice(0, 3000),
         url: sanitize(window.location.href),
         userAgent: navigator.userAgent,
+        buildRevision: BUILD_REVISION,
         ...extra,
       }),
       keepalive: true,
