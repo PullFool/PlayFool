@@ -717,6 +717,9 @@ function httpGet(url, timeout = 10000) {
 
 function cleanTitle(title) {
   return title
+    // Defensive — strip an audio extension if a caller ever passes the raw
+    // filename instead of the metadata title.
+    .replace(/\.(mp3|m4a|opus|webm|ogg|wav|aac|flac)$/i, '')
     .replace(/\(official\s*(music\s*)?video\)/gi, '')
     .replace(/\(official\s*lyric\s*video\)/gi, '')
     .replace(/\(live\s*(performance|at|session).*?\)/gi, '')
