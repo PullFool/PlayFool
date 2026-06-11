@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { IoMusicalNotes, IoThumbsDown, IoPlaySkipForward } from 'react-icons/io5';
+import { IoMusicalNotes, IoThumbsDown, IoPlaySkipForward, IoRefresh } from 'react-icons/io5';
 import { subscribe, requestState, broadcastAction } from '../utils/playerBroadcast';
 import styles from './PopupLyrics.module.css';
 
@@ -35,6 +35,7 @@ function PopupLyrics() {
   const [match, setMatch] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [noMoreMatches, setNoMoreMatches] = useState(false);
   const activeRef = useRef(null);
 
   useEffect(() => {
@@ -53,7 +54,7 @@ function PopupLyrics() {
   const fetchLyrics = useCallback(async (song, opts = {}) => {
     const songKey = getSongKey(song);
     const rejectedIds = loadRejected(songKey);
-    setLoading(true); setError(''); setLyricsData(null); setMatch(null);
+    setLoading(true); setError(''); setLyricsData(null); setMatch(null); setNoMoreMatches(false);
     try {
       const res = await fetch(`${API_BASE}/lyrics/fetch`, {
         method: 'POST',
@@ -77,6 +78,7 @@ function PopupLyrics() {
         setError(rejectedIds.length > 0
           ? 'No more matches to try'
           : 'Lyrics not found for this song');
+        setNoMoreMatches(rejectedIds.length > 0);
       }
     } catch (e) { setError('Could not load lyrics'); }
     finally { setLoading(false); }
@@ -127,6 +129,12 @@ function PopupLyrics() {
     fetchLyrics(currentSong, { force: true });
   }, [currentSong, match, fetchLyrics]);
 
+  const resetRejected = useCallback(() => {
+    if (!currentSong) return;
+    saveRejected(getSongKey(currentSong), []);
+    fetchLyrics(currentSong, { force: true });
+  }, [currentSong, fetchLyrics]);
+
   return (
     <div className={styles.wrap}>
       <div className={styles.content}>
@@ -140,7 +148,14 @@ function PopupLyrics() {
           <div className={styles.status}><p>Loading lyrics...</p></div>
         )}
         {currentSong && error && !loading && (
-          <div className={styles.status}><p>{error}</p></div>
+          <div className={styles.status}>
+            <p>{error}</p>
+            {noMoreMatches && (
+              <button className={styles.matchBtn} onClick={resetRejected} title="Clear rejections and try again">
+                <IoRefresh /> Start over
+              </button>
+            )}
+          </div>
         )}
         {lines.length > 0 && !loading && (
           <div className={styles.lines}>

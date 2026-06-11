@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAudio } from '../context/PlayerContext';
-import { IoClose, IoMusicalNotes, IoThumbsDown, IoPlaySkipForward } from 'react-icons/io5';
+import { IoClose, IoMusicalNotes, IoThumbsDown, IoPlaySkipForward, IoRefresh } from 'react-icons/io5';
 import styles from './Lyrics.module.css';
 
 const API_BASE = process.env.REACT_APP_API_URL;
@@ -32,12 +32,15 @@ function Lyrics({ onClose }) {
   const [match, setMatch] = useState(null); // { sourceId, totalMatches, currentIndex }
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  // True only on the "rejected every match" path — drives the Start over
+  // button so the user can wipe the reject list and try the first match again.
+  const [noMoreMatches, setNoMoreMatches] = useState(false);
   const activeRef = useRef(null);
 
   const fetchLyrics = useCallback(async (song, opts = {}) => {
     const songKey = getSongKey(song);
     const rejectedIds = loadRejected(songKey);
-    setLoading(true); setError(''); setLyricsData(null); setMatch(null);
+    setLoading(true); setError(''); setLyricsData(null); setMatch(null); setNoMoreMatches(false);
     try {
       const res = await fetch(`${API_BASE}/lyrics/fetch`, {
         method: 'POST',
@@ -61,6 +64,7 @@ function Lyrics({ onClose }) {
         setError(rejectedIds.length > 0
           ? 'No more matches to try — all the alternatives were rejected'
           : 'Lyrics not found for this song');
+        setNoMoreMatches(rejectedIds.length > 0);
       }
     } catch (e) {
       setError('Could not load lyrics');
@@ -101,6 +105,12 @@ function Lyrics({ onClose }) {
     saveRejected(key, next);
     fetchLyrics(currentSong, { force: true });
   }, [currentSong, match, fetchLyrics]);
+
+  const resetRejected = useCallback(() => {
+    if (!currentSong) return;
+    saveRejected(getSongKey(currentSong), []);
+    fetchLyrics(currentSong, { force: true });
+  }, [currentSong, fetchLyrics]);
 
   const markWrong = useCallback(() => {
     if (!currentSong || !match?.sourceId) return;
@@ -146,6 +156,11 @@ function Lyrics({ onClose }) {
           <div className={styles.status}>
             <IoMusicalNotes className={styles.statusIcon} />
             <p>{error}</p>
+            {noMoreMatches && (
+              <button className={styles.matchBtn} onClick={resetRejected} title="Clear rejections and try again">
+                <IoRefresh /> Start over
+              </button>
+            )}
           </div>
         )}
 
