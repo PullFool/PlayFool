@@ -60,6 +60,21 @@ export function AudioProvider({ children }) {
     const onTimeUpdate = () => setCurrentTime(audio.currentTime);
     const onDurationChange = () => setDuration(audio.duration || 0);
     const onEnded = () => {
+      // Auto-normalize the just-ended song in the background. The file is no
+      // longer being read by playback at this point, so ffmpeg can safely
+      // re-encode it. Fire-and-forget — the server skips if already done.
+      const justEnded = currentSong;
+      if (justEnded && justEnded.url && /\/downloads\//.test(justEnded.url)) {
+        const file = decodeURIComponent(justEnded.url.split('/').pop() || '');
+        if (file) {
+          fetch(`${process.env.REACT_APP_API_URL || '/api'}/normalize-one`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ file }),
+            keepalive: true,
+          }).catch(() => {});
+        }
+      }
       if (repeat === 2) { audio.currentTime = 0; audio.play(); }
       else if (skipNextRef.current) skipNextRef.current();
     };

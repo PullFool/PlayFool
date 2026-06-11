@@ -1076,6 +1076,134 @@ app.post('/api/lyrics/fetch', async (req, res) => {
   res.json({ lyrics: null, error: 'Lyrics not found' });
 });
 
+// --- Volume normalization ---
+// Run ffmpeg's loudnorm filter so every track in the library plays at the
+// same perceived loudness (-14 LUFS, Spotify's target). A sidecar `.norm`
+// marker per file remembers what's been processed so we only run loudnorm
+// once per song; the marker is what mobile reads (via sync) to know which
+// of its synced files are already normalized.
+const normalizedDir = path.join(appDataDir, 'normalized');
+if (!fs.existsSync(normalizedDir)) fs.mkdirSync(normalizedDir, { recursive: true });
+
+function normMarkerPath(filePath) {
+  return path.join(normalizedDir, path.basename(filePath) + '.norm');
+}
+
+function isNormalized(filePath) {
+  return fs.existsSync(normMarkerPath(filePath));
+}
+
+function markNormalized(filePath) {
+  try { fs.writeFileSync(normMarkerPath(filePath), new Date().toISOString()); } catch (e) {}
+}
+
+const normalizeState = {
+  running: false,
+  total: 0,
+  done: 0,
+  currentFile: '',
+  error: '',
+};
+
+async function normalizeAudioFile(filePath) {
+  if (!fs.existsSync(filePath)) throw new Error('file not found');
+  if (isNormalized(filePath)) return { skipped: true };
+  const isWin = process.platform === 'win32';
+  const ffmpegName = isWin ? 'ffmpeg.exe' : 'ffmpeg';
+  const candidates = [
+    path.join(__dirname, 'ffmpeg', ffmpegName),
+    path.join(__dirname, 'bin', ffmpegName),
+  ];
+  if (isWin) candidates.push('C:\\ffmpeg\\bin\\ffmpeg.exe');
+  else candidates.push('/usr/local/bin/ffmpeg', '/opt/homebrew/bin/ffmpeg', '/usr/bin/ffmpeg');
+  let ffmpegExe = ffmpegName;
+  for (const c of candidates) {
+    if (fs.existsSync(c)) { ffmpegExe = c; break; }
+  }
+  const tempPath = filePath + '.norm.tmp.mp3';
+  return new Promise((resolve, reject) => {
+    const args = [
+      '-y',
+      '-i', filePath,
+      '-af', 'loudnorm=I=-14:TP=-1.5:LRA=11',
+      '-c:a', 'libmp3lame',
+      '-b:a', '192k',
+      '-map_metadata', '0',
+      '-id3v2_version', '3',
+      '-metadata', 'comment=PlayFool-Normalized',
+      tempPath,
+    ];
+    execFile(ffmpegExe, args, { timeout: 120000 }, (err) => {
+      if (err) {
+        try { fs.unlinkSync(tempPath); } catch (e) {}
+        return reject(err);
+      }
+      try {
+        fs.renameSync(tempPath, filePath);
+        markNormalized(filePath);
+        resolve({ ok: true });
+      } catch (e) {
+        try { fs.unlinkSync(tempPath); } catch (e2) {}
+        reject(e);
+      }
+    });
+  });
+}
+
+async function runBatchNormalize() {
+  if (normalizeState.running) return;
+  normalizeState.running = true;
+  normalizeState.error = '';
+  try {
+    const files = fs.readdirSync(downloadsDir)
+      .filter((f) => /\.(mp3|m4a)$/i.test(f))
+      .map((f) => path.join(downloadsDir, f))
+      .filter((p) => !isNormalized(p));
+    normalizeState.total = files.length;
+    normalizeState.done = 0;
+    for (const filePath of files) {
+      normalizeState.currentFile = path.basename(filePath);
+      try { await normalizeAudioFile(filePath); }
+      catch (e) { /* skip failures (file in use, decode error, etc.) and continue */ }
+      normalizeState.done++;
+    }
+    normalizeState.currentFile = '';
+  } catch (e) {
+    normalizeState.error = e?.message || String(e);
+  } finally {
+    normalizeState.running = false;
+  }
+}
+
+// Fire-and-forget — called by the player when a song finishes so the just-
+// played track lands in the normalized set without making the user wait.
+app.post('/api/normalize-one', (req, res) => {
+  const { file } = req.body || {};
+  if (!file) return res.status(400).json({ error: 'file required' });
+  const filePath = path.join(downloadsDir, path.basename(file));
+  if (!fs.existsSync(filePath)) return res.json({ skipped: true, reason: 'not found' });
+  if (isNormalized(filePath)) return res.json({ skipped: true, reason: 'already normalized' });
+  normalizeAudioFile(filePath).catch(() => {});
+  res.json({ started: true });
+});
+
+app.post('/api/normalize-batch', (req, res) => {
+  if (normalizeState.running) return res.json({ alreadyRunning: true });
+  runBatchNormalize();
+  res.json({ started: true });
+});
+
+app.get('/api/normalize-status', (req, res) => {
+  let total = 0;
+  let normalized = 0;
+  try {
+    const files = fs.readdirSync(downloadsDir).filter((f) => /\.(mp3|m4a)$/i.test(f));
+    total = files.length;
+    normalized = files.filter((f) => isNormalized(path.join(downloadsDir, f))).length;
+  } catch (e) {}
+  res.json({ ...normalizeState, total, normalized });
+});
+
 function parseLrc(content) {
   const lines = content.split('\n');
   const parsed = [];
