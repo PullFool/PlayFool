@@ -29,6 +29,12 @@ export function AudioProvider({ children }) {
   const skipNextRef = useRef(null);
   const mediaTypeRef = useRef('audio');
   const currentSong = currentIndex >= 0 ? songs[currentIndex] : null;
+  // Mirror currentSong into a ref so the long-lived onEnded listener — bound
+  // once and only rebound when `repeat` changes — can read the song that
+  // actually just finished, not whatever was in scope when the effect first
+  // ran (which is always null on mount).
+  const currentSongRef = useRef(null);
+  currentSongRef.current = currentSong;
 
   // Get active media element (audio or video)
   const getMedia = useCallback(() => {
@@ -63,7 +69,7 @@ export function AudioProvider({ children }) {
       // Auto-normalize the just-ended song in the background. The file is no
       // longer being read by playback at this point, so ffmpeg can safely
       // re-encode it. Fire-and-forget — the server skips if already done.
-      const justEnded = currentSong;
+      const justEnded = currentSongRef.current;
       if (justEnded && justEnded.url && /\/downloads\//.test(justEnded.url)) {
         const file = decodeURIComponent(justEnded.url.split('/').pop() || '');
         if (file) {
