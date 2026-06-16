@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
-import { IoLogoYoutube, IoList, IoHome, IoVideocam, IoSunny, IoMoon, IoHeart, IoSync } from 'react-icons/io5';
+import { IoLogoYoutube, IoList, IoHome, IoVideocam, IoSunny, IoMoon, IoHeart, IoSync, IoVolumeMedium } from 'react-icons/io5';
 import { APP_VERSION } from './Tour';
 import SupportModal from './SupportModal';
 import SyncDialog from './SyncDialog';
+import NormalizeDialog from './NormalizeDialog';
 import styles from './Sidebar.module.css';
 
 const HEARTS_API = 'https://adrianborboran.up.railway.app/api/hearts';
@@ -38,6 +39,7 @@ function Sidebar() {
   const [theme, setTheme] = useState(() => localStorage.getItem('playfool_theme') || 'dark');
   const [showSupport, setShowSupport] = useState(false);
   const [showSync, setShowSync] = useState(false);
+  const [showNormalize, setShowNormalize] = useState(false);
   const [hasHearted, setHasHearted] = useState(false); // Session-only: red during this run, resets on next launch
   const [updateStatus, setUpdateStatus] = useState(null); // 'checking' | 'up-to-date' | 'found' | 'error'
 
@@ -118,6 +120,13 @@ function Sidebar() {
             <IoSync />
           </button>
           <button
+            className={styles.themeToggle}
+            onClick={() => setShowNormalize(true)}
+            title="Volume normalization"
+          >
+            <IoVolumeMedium />
+          </button>
+          <button
             className={`${styles.heartBtn} ${hasHearted ? styles.heartBtnActive : ''}`}
             onClick={onHeartClick}
             title={hasHearted ? 'Thanks for the love! ❤️' : 'Support PlayFool'}
@@ -145,6 +154,7 @@ function Sidebar() {
       />
 
       <SyncDialog open={showSync} onClose={() => setShowSync(false)} />
+      <NormalizeDialog open={showNormalize} onClose={() => setShowNormalize(false)} />
     </aside>
   );
 }
